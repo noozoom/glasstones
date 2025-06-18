@@ -65,8 +65,8 @@ function initializeAudio() {
                 spread: 180      // Full stereo spread
             }).start();
             
-            // Create global reverb (12s decay, 100% wet)
-            reverbNode = new Tone.Reverb({decay: 12, preDelay: 0.01}).toDestination();
+            // Create global reverb (15s decay, 100% wet)
+            reverbNode = new Tone.Reverb({decay: 15, preDelay: 0.01}).toDestination();
             reverbNode.wet.value = 1; // 100% reverb on routed signals
             
             // Chain: Chorus -> Reverb -> Destination
@@ -99,7 +99,9 @@ function setupDrone() {
         volume: -20 // Base volume
     }).connect(droneGain);
     drone.start();
-    droneGain.gain.rampTo(0.422, 10); // 36% down total (0.66*0.8*0.8)
+    // Start completely silent, then fade in over 2 seconds to prevent "pop" sound
+    droneGain.gain.setValueAtTime(0, Tone.now());
+    droneGain.gain.rampTo(0.422, 2); // Smooth 2-second fade-in
     drone.gainNode = droneGain;
 
     // ---------- D3 Drone ---------- (frequency 146.83Hz)
@@ -111,7 +113,9 @@ function setupDrone() {
         volume: -20
     }).connect(droneD3Gain);
     droneD3.start();
-    droneD3Gain.gain.rampTo(0.422, 10); // 36% down total
+    // Start completely silent, then fade in over 2 seconds to prevent "pop" sound
+    droneD3Gain.gain.setValueAtTime(0, Tone.now());
+    droneD3Gain.gain.rampTo(0.422, 2); // Smooth 2-second fade-in
     droneD3.gainNode = droneD3Gain;
 }
 
@@ -128,7 +132,7 @@ function setupSynthPool() {
                 attack: 0.25,
                 decay: 0.15,
                 sustain: 0.3,
-                release: 4.0 // Extend release to 4 seconds
+                release: 7.0 // Extend release to 7 seconds (4 + 3)
             },
             volume: -15
         });
@@ -258,7 +262,7 @@ function playLineSound(line, consecutiveHits = 1, xPos = null) {
     const minFreq = playableScale[0]; // A3 (220.00Hz) - loudest
     const maxFreq = playableScale[playableScale.length - 1]; // D6 (1174.66Hz) - quietest
     const freqProgress = (frequencyForDisplay - minFreq) / (maxFreq - minFreq); // 0→1
-    const freqVolumeMultiplier = 1.0 - (freqProgress * 0.4); // 100% → 60% (40% reduction)
+    const freqVolumeMultiplier = 1.0 - (freqProgress * 0.55); // 100% → 45% (55% reduction)
     
     const baseVolume = -15;
     const adjustedVolume = baseVolume + (20 * Math.log10(volumeMultiplier * ageFactor * freqVolumeMultiplier));

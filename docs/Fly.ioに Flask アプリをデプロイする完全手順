@@ -1,0 +1,249 @@
+# 📦 SPLAYLISTを Fly.io にデプロイする手順（Flask版）
+
+## ✅ 事前準備
+
+### 1. 必要なものをインストール
+- Fly CLI（https://fly.io/docs/hands-on/install-flyctl/）
+```bash
+brew install flyctl   # macOSの場合
+```
+
+- アカウント登録（無料）：https://fly.io
+
+### 2. Flaskアプリ構成を確認（プロジェクト直下にこれがあること）
+
+```
+/splaylist/
+├── app.py
+├── requirements.txt
+├── Procfile（あればOK）
+├── templates/
+└── static/
+```
+
+---
+
+## 🚀 デプロイ手順（初回）
+
+### 1. プロジェクトフォルダに移動
+```bash
+cd ~/Documents/Cursor/splaylist/
+```
+
+### 2. 初期化
+```bash
+flyctl launch
+```
+
+- アプリ名を聞かれたら「splaylist」など任意で入力
+- リージョンは `nrt`（東京）を選択（推奨）
+- `fly.toml` が自動生成される
+
+### 3. `fly.toml` に必要な環境変数を追加
+
+```toml
+[env]
+  CLIENT_ID = "your_spotify_client_id"
+  CLIENT_SECRET = "your_spotify_client_secret"
+  REDIRECT_URI = "https://splaylist.fly.dev/callback"
+  SPOTIPY_REDIRECT_URI = "https://splaylist.fly.dev/callback"
+```
+
+（`.env`を使っている場合は `os.environ.get()` 形式に統一）
+
+### 4. Dockerfile を作成（なければ）
+
+```Dockerfile
+# Dockerfile
+FROM python:3.10
+WORKDIR /app
+COPY . /app
+RUN pip install -r requirements.txt
+CMD ["gunicorn", "app:app"]
+```
+
+### 5. デプロイ！
+```bash
+flyctl deploy
+```
+
+数十秒後、`https://splaylist.fly.dev` が公開されます！
+
+---
+
+## 🛠️ 補足設定
+
+### ✅ リダイレクトURL（Spotify Developer Console側）
+
+`https://splaylist.fly.dev/callback`  
+をSpotify側の設定にも追加しておく
+
+### ✅ Flaskアプリ側
+
+- `redirect_uri = os.environ.get("REDIRECT_URI")` にしておけば、本番環境で自動適用
+- `SESSION_SECRET_KEY` も `.env` or 環境変数で渡しておく
+
+---
+
+## 📱 本番環境のURL例
+
+- Web：`https://splaylist.fly.dev`
+- Callback：`https://splaylist.fly.dev/callback`
+
+---
+
+
+## 🎯 次のステップ
+
+- カスタムドメインの設定（例：splaylist.app）
+- UI改善・広告設置などの実装継続
+- Railwayからの完全移行
+
+---
+
+## 🧠 実践メモ：ハマった点・コツ・要点まとめ
+
+### ✅ 躓いたポイントと対処法
+
+- **`flyctl deploy` で "Could not find App" エラー**  
+  → 事前に `flyctl apps create splaylist` を実行しておく必要がある  
+  → クレジットカード登録が求められる（未登録だとアプリ作成できない）
+
+- **`requirements.txt` がないとビルド失敗**  
+  → `RUN pip install -r requirements.txt` に対して `No such file` エラーが出る  
+  → Flask, spotipy, gunicorn, requests など明示的に記載しておく
+
+- **Flaskアプリがデプロイされたのに「サーバが見つかりません」になる**  
+  → 原因は `app.run()` が `localhost` 待機だったため  
+  → `host='0.0.0.0', port=5000` に修正することで解決
+
+- **REDIRECT_URI がローカル (`http://127.0.0.1`) のまま**  
+  → 本番環境では必ず `https://splaylist.fly.dev/callback` にする  
+  → Spotify Developer Console 側にも同じURIを登録する必要がある
+
+### ✅ コツ・学び
+
+- ローカル開発用の設定（ポート・redirect_uri）は、Fly用に確実に分けて管理すべき
+- `flyctl logs` でエラー内容を即座に確認できるのが非常に便利
+- Gunicornによるデプロイは安定しており、CMDの `"gunicorn", "-b", "0.0.0.0:5000", "app:app"` は必須
+- `fly.toml` に `[env]` をしっかり定義しておくことで環境変数が機能する
+
+### ✅ 今後の参考ポイント
+
+- 最初はローカル `flyctl deploy` のほうが楽。GitHub連携は安定後でもよい
+- Spotify API のリダイレクト挙動などは、実機テストですぐに挙動を確認するのがベスト
+
+### ✅ 今回（2025年6月16日〜17日）の作業とハマりポイント
+
+```markdown
+### ✅ iPhoneでSpotify認証後に遷移できない問題（HTTPブロック）
+
+iOS Safari やアプリ内ブラウザでは、**http://〜のリダイレクト先がブロックされる**ことがある。
+特に `http://66.241.124.69:5000/callback` のようなIPアドレスURLは、iOS環境でセキュリティ上はじかれるケースが多い。
+
+✅ **対策：すべてのリダイレクト先を `https://splaylist.fly.dev/callback` に統一すること**
+
+| 設定箇所 | 値 |
+|----------|----|
+| `fly.toml` | `REDIRECT_URI = "https://splaylist.fly.dev/callback"` |
+| `.env` または secrets | `SPOTIPY_REDIRECT_URI=https://splaylist.fly.dev/callback` |
+| Spotify Developer Console | `https://splaylist.fly.dev/callback` を登録 |
+| Flask内の `redirect_uri` | `os.environ.get("REDIRECT_URI")` を使う構成が望ましい |
+
+これによりiOSからのSpotify認証後も安定して `/callback` に戻るようになる。
+```
+
+---
+
+### ✅ Dedicated IPv4（$2/月）に切り替えるときの手順
+
+#### 🔁 1. 有料のDedicated IPを割り当てる
+```bash
+flyctl ips allocate-v4
+```
+→ 表示された Dedicated IP（例: `169.155.49.122`）をメモ
+
+#### 🛠 2. `fly.toml` の `REDIRECT_URI` をDedicated IPに更新
+
+```toml
+[env]
+  CLIENT_ID = "xxxxxxxxxxxxxxxxxxxx"
+  CLIENT_SECRET = "xxxxxxxxxxxxxxxxxxxx"
+  REDIRECT_URI = "http://169.155.49.122:5000/callback"  # ← ここを書き換える
+  SPOTIPY_REDIRECT_URI = "http://169.155.49.122:5000/callback"
+```
+
+#### 🎵 3. Spotify Developer Consoleでも変更
+- `http://169.155.49.122:5000/callback` を **Redirect URI** に追加して保存
+
+#### 🔐 4. 環境変数をFlyに設定（必要に応じて）
+```bash
+flyctl secrets set SPOTIPY_REDIRECT_URI=http://169.155.49.122:5000/callback
+```
+
+#### 🚀 5. 最後に再デプロイ
+```bash
+flyctl deploy
+```
+
+---
+
+この手順で「splaylist.fly.dev」ドメインが不要になり、IPでも安定運用が可能になります。
+```
+
+---
+
+## 🔧 Spotify認証で `INVALID_CLIENT: Invalid redirect URI` を防ぐための一括チェックリスト
+
+### ✅ ① `app.py` 内の `redirect_uri` の指定を確認
+- `SpotifyOAuth(...)` を呼び出している箇所を探す
+- 次のように書かれていることを確認 or 修正：
+```python
+import os
+REDIRECT_URI = os.environ.get("SPOTIPY_REDIRECT_URI")
+
+sp_oauth = SpotifyOAuth(
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    redirect_uri=REDIRECT_URI,   # ← 必ずここが変数になっていること
+    scope=SCOPE
+)
+```
+- `"http://127.0.0.1:8888/callback"` のようなハードコードがあれば即削除
+
+### ✅ ② `.env` に記載された `SPOTIPY_REDIRECT_URI` を確認
+- `.env` に以下の1行だけがあることを確認：
+```
+SPOTIPY_REDIRECT_URI=https://splaylist.fly.dev/callback
+```
+- 他に `http://127.0.0.1` などがあれば削除
+
+### ✅ ③ Fly.io の secrets に登録された値を確認
+```bash
+flyctl secrets list
+```
+- 結果に以下があること：
+```
+SPOTIPY_REDIRECT_URI = https://splaylist.fly.dev/callback
+```
+- もし間違っていたら再登録：
+```bash
+flyctl secrets set SPOTIPY_REDIRECT_URI=https://splaylist.fly.dev/callback
+```
+
+### ✅ ④ Spotify Developer Console 側の登録を確認
+- 登録済み Redirect URI は **`https://splaylist.fly.dev/callback` のみ** にする
+- `127.0.0.1` や `/localhost` 系は削除
+
+### ✅ ⑤ `fly.toml` の環境変数を確認
+```toml
+[env]
+  CLIENT_ID = "87587e29d3f842efb882943f3570bb0e"
+  CLIENT_SECRET = "b66a4b68f0844c2a93b552807fad946f"
+  REDIRECT_URI = "https://splaylist.fly.dev/callback"
+  SPOTIPY_REDIRECT_URI = "https://splaylist.fly.dev/callback"
+```
+
+**重要：この5点をすべて揃えることで、スマホや他の端末でも `SpotifyOAuth` が確実に動作し、認証後にアプリへ正しく戻ってきます。**
+
+---

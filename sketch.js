@@ -141,10 +141,10 @@ function updateRipples() {
 // p5 preload : 広告画像を読み込み
 // -----------------------------
 function preload() {
-    backgroundImg = loadImage('assets/UTM_3.5_ASR_Product_Key_Visual_1x1_24AW.jpg', () => {
-        console.log('Shiseido red background loaded successfully');
+    backgroundImg = loadImage('assets/rust_bg.jpg', () => {
+        console.log('Rust background loaded successfully');
     }, err => {
-        console.error('Shiseido red background load failed, loading fallback');
+        console.error('Rust background load failed, loading fallback');
         backgroundImg = loadImage('assets/027_01.jpg');
     });
 }
@@ -173,8 +173,8 @@ function setup() {
     // Initialize ball
     initializeBall();
     
-    // Start the game
-    gameStarted = true;
+    // Don't start the game automatically - wait for user to click START button
+    // gameStarted will be set to true in startGame() function
     
     // Initialize score display
     if (typeof initializeScore === 'function') {
@@ -716,6 +716,11 @@ function reflectBallOffLine(p1, p2, crossed, prevX, prevY) {
 
 // Drawing functions
 function mousePressed() {
+    // Don't start drawing if game hasn't started yet
+    if (!gameStarted) {
+        return;
+    }
+    
     // Initialize audio on first click
     handleUserInteraction();
     startDrawing(mouseX, mouseY);
@@ -733,6 +738,11 @@ function mouseReleased() {
 
 // Touch events for mobile
 function touchStarted() {
+    // Don't start drawing if game hasn't started yet
+    if (!gameStarted) {
+        return false;
+    }
+    
     // Initialize audio on first touch
     handleUserInteraction();
     if (touches.length > 0) {
@@ -995,7 +1005,12 @@ function fadeOutStartMessage() {
 // Call this function when the game starts
 function startGame() {
     fadeOutStartMessage();
-    // ... existing code to start the game ...
+    gameStarted = true; // Enable drawing after start button is clicked
+    
+    // Ensure no point is created on game start
+    if (isDrawing) {
+        endDrawing(); // End any drawing that might have started
+    }
 }
 
 // Function to draw current line on preview layer without affecting fog
