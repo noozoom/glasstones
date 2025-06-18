@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "app.js": {
-      "runtime": "@vercel/node"
-    }
-  },
   "rewrites": [
     {
       "source": "/(.*)",
