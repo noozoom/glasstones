@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+    <div style="position: absolute; top: 10px; left: 10px; color: white; z-index: 1000;">
+        Score: <span id="score">0</span>
+    </div>
+    
+    <script>
+        let ball = { x: 200, y: 200, vx: 2, vy: 1.5 };
+        let lines = [];
+        let currentLine = null;
+        let isDrawing = false;
+        let audioStarted = false;
+        
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+        }
+        
+        function draw() {
+            background(150, 50, 150);
+            
+            // Update ball
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+            
+            if (ball.x < 0 || ball.x > width) ball.vx *= -1;
+            if (ball.y < 0 || ball.y > height) ball.vy *= -1;
+            
+            // Draw ball
+            fill(255);
+            ellipse(ball.x, ball.y, 20, 20);
+            
+            // Draw lines
+            stroke(255);
+            strokeWeight(3);
+            noFill();
+            for (let lineArray of lines) {
+                if (lineArray.length > 1) {
+                    beginShape();
+                    for (let point of lineArray) {
+                        vertex(point.x, point.y);
+                    }
+                    endShape();
+                }
+            }
+            
+            // Draw current line
+            if (currentLine && currentLine.length > 1) {
+                beginShape();
+                for (let point of currentLine) {
+                    vertex(point.x, point.y);
+                }
+                endShape();
+            }
+        }
+        
+        function mousePressed() {
+            if (!audioStarted) {
+                Tone.start();
+                audioStarted = true;
+            }
+            isDrawing = true;
+            currentLine = [{x: mouseX, y: mouseY}];
+        }
+        
+        function mouseDragged() {
+            if (isDrawing) {
+                currentLine.push({x: mouseX, y: mouseY});
+            }
+        }
+        
+        function mouseReleased() {
+            if (currentLine && currentLine.length > 5) {
+                lines.push(currentLine);
+                if (lines.length > 10) lines.shift();
+            }
+            isDrawing = false;
+            currentLine = null;
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html> 

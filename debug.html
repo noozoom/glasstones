@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Canvas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #333; }
+    </style>
+</head>
+<body>
+    <div id="info" style="position: absolute; top: 10px; left: 10px; color: white; z-index: 1000;">
+        Canvas Size: <span id="size">Loading...</span>
+    </div>
+    
+    <script>
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            console.log('Setup - windowWidth:', windowWidth, 'windowHeight:', windowHeight);
+            console.log('Setup - width:', width, 'height:', height);
+            document.getElementById('size').textContent = width + ' x ' + height;
+        }
+        
+        function draw() {
+            background(150, 50, 150); // Purple background
+            
+            // Draw border
+            stroke(255);
+            strokeWeight(3);
+            noFill();
+            rect(2, 2, width-4, height-4);
+            
+            // Draw center circle
+            fill(255, 255, 0);
+            noStroke();
+            ellipse(width/2, height/2, 50, 50);
+            
+            // Draw text
+            fill(255);
+            textSize(20);
+            text('Canvas: ' + width + ' x ' + height, 20, 50);
+            text('Mouse: ' + mouseX + ', ' + mouseY, 20, 80);
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            console.log('Resized - width:', width, 'height:', height);
+            document.getElementById('size').textContent = width + ' x ' + height;
+        }
+    </script>
+</body>
+</html> 

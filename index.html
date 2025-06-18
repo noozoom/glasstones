@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlassTones: A Touch of Sound</title>
+    
+    <!-- p5.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    
+    <!-- Tone.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+    <style>
+      #score-display {
+        display: none;
+      }
+      #note-display {
+        display: none;
+      }
+      .touch-to-start {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #000;
+        border: 3px solid #fff;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+        font-size: 1.5em;
+        font-weight: bold;
+        padding: 15px 30px;
+        text-align: center;
+        opacity: 0;
+        animation: fadeIn 2s ease-out forwards, bounce 2s infinite alternate;
+        z-index: 1000;
+        cursor: pointer;
+        user-select: none;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        letter-spacing: 2px;
+      }
+      
+      .touch-to-start:hover {
+        background: #333;
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+      }
+      
+      .touch-to-start:active {
+        background: #555;
+        transform: translate(-50%, -50%) scale(0.95);
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+      }
+      
+      .touch-to-start.clicked {
+        background: #444;
+        transform: translate(-50%, -50%) scale(1.05);
+        transition: all 0.1s ease-out;
+      }
+
+      @keyframes fadeIn {
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes bounce {
+        to {
+          transform: translate(-50%, -48%);
+        }
+      }
+
+      @keyframes fadeOut {
+        to {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.9);
+        }
+      }
+
+      .touch-to-start.fade-out {
+        animation: fadeOut 0.8s ease-out forwards;
+      }
+
+      .draw-instruction {
+        position: absolute;
+        top: calc(50% + 100px);
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font-family: 'Courier New', monospace;
+        font-size: 1.2em;
+        font-weight: normal;
+        text-align: center;
+        opacity: 0;
+        z-index: 999;
+        pointer-events: none;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        letter-spacing: 1px;
+      }
+
+      .draw-instruction.show {
+        animation: showAndFade 8s ease-out forwards;
+      }
+
+      @keyframes showAndFade {
+        0% {
+          opacity: 0;
+          transform: translate(-50%, -50%) translateY(20px);
+        }
+        15% {
+          opacity: 1;
+          transform: translate(-50%, -50%) translateY(0px);
+        }
+        85% {
+          opacity: 1;
+          transform: translate(-50%, -50%) translateY(0px);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -50%) translateY(-20px);
+        }
+      }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="score-display">Score: <span id="score">0</span></div>
+        <div id="note-display">Note: 待機中 | Len: 0px | 0Hz</div>
+    </div>
+    
+    <div class="touch-to-start">START</div>
+    <div class="draw-instruction">Draw your line</div>
+    
+    <!-- Game scripts -->
+    <script src="sound.js"></script>
+    <script src="score.js"></script>
+    <script src="sketch.js"></script>
+    
+    <script>
+      // Touch to Start functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const touchToStart = document.querySelector('.touch-to-start');
+        const drawInstruction = document.querySelector('.draw-instruction');
+        let gameStarted = false;
+        
+        async function hideStartMessage(event) {
+          console.log('hideStartMessage called', event.type);
+          event.preventDefault();
+          event.stopPropagation();
+          
+          if (touchToStart && !touchToStart.classList.contains('fade-out') && !gameStarted) {
+            console.log('Hiding touch to start message');
+            gameStarted = true;
+            
+            // クリック効果を一瞬追加
+            touchToStart.classList.add('clicked');
+            setTimeout(() => {
+              touchToStart.classList.remove('clicked');
+            }, 100);
+            
+            // Tone.jsのオーディオコンテキストを開始
+            try {
+              if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+                await Tone.start();
+                console.log('Audio context started');
+              }
+            } catch (error) {
+              console.log('Audio context start failed:', error);
+            }
+            
+            // アニメーションを停止してフェードアウト開始
+            touchToStart.style.animation = 'none';
+            // 少し待ってからフェードアウト開始
+            setTimeout(() => {
+              touchToStart.classList.add('fade-out');
+            }, 50);
+            setTimeout(() => {
+              touchToStart.style.display = 'none';
+              console.log('Touch to start hidden');
+              
+              // Show "Draw your line" message after START button disappears
+              if (drawInstruction) {
+                setTimeout(() => {
+                  drawInstruction.classList.add('show');
+                }, 500);
+              }
+            }, 800);
+          } else {
+            console.log('Touch to start already hidden or not found');
+          }
+        }
+        
+        // STARTボタンに直接イベントを追加（他の要素には追加しない）
+        if (touchToStart) {
+          // タッチイベントを優先して処理
+          touchToStart.addEventListener('touchend', hideStartMessage, { passive: false });
+          touchToStart.addEventListener('click', hideStartMessage, { passive: false });
+          
+          // 重複防止のため、touchendが発生した場合はclickを無視
+          let touchHandled = false;
+          touchToStart.addEventListener('touchstart', () => {
+            touchHandled = true;
+            setTimeout(() => { touchHandled = false; }, 500);
+          }, { passive: true });
+          
+          const originalClick = hideStartMessage;
+          const clickHandler = (event) => {
+            if (!touchHandled) {
+              originalClick(event);
+            }
+          };
+          touchToStart.removeEventListener('click', hideStartMessage);
+          touchToStart.addEventListener('click', clickHandler, { passive: false });
+        }
+        
+        // Prevent other touches from starting the game
+        document.addEventListener('touchstart', function(event) {
+          if (!gameStarted && !touchToStart.contains(event.target)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }, { passive: false });
+        
+        document.addEventListener('click', function(event) {
+          if (!gameStarted && !touchToStart.contains(event.target)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }, { passive: false });
+      });
+    </script>
+</body>
+</html>
