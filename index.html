@@ -129,17 +129,11 @@
         }
       }
 
-      body {
-        background-image: url('assets/rust_bg.jpg?v=67890');
-        background-size: cover; /* 画像をズームして背景を覆う */
-        background-position: center; /* 画像を中央に配置 */
-        background-repeat: no-repeat; /* 画像の繰り返しを防ぐ */
-        height: 100vh; /* ビューポート全体をカバー */
-        margin: 0;
-      }
+
     </style>
 </head>
 <body>
+    <div class="background-image"></div>
     <div id="game-container">
         <div id="score-display">Score: <span id="score">0</span></div>
         <div id="note-display">Note: 待機中 | Len: 0px | 0Hz</div>
@@ -154,6 +148,22 @@
     <script src="sketch.js"></script>
     
     <script>
+      // Background image fade-in
+      document.addEventListener('DOMContentLoaded', function() {
+        const backgroundImg = document.querySelector('.background-image');
+        
+        // Preload background image
+        const img = new Image();
+        img.onload = function() {
+          console.log('Background image loaded');
+          // Add loaded class to trigger fade-in
+          setTimeout(() => {
+            backgroundImg.classList.add('loaded');
+          }, 100); // Small delay for smooth transition
+        };
+        img.src = 'assets/rust_bg.jpg';
+      });
+      
       // Touch to Start functionality
       document.addEventListener('DOMContentLoaded', function() {
         const touchToStart = document.querySelector('.touch-to-start');
