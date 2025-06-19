@@ -13,36 +13,41 @@ const SYNTH_POOL_SIZE = 32;
 // Track last time each base frequency was played
 let lastFreqTimes = {};
 
-// Lydian scale frequencies (G2-D5) — 実際のライン音は B2 (index 2) 以上を使用
-const lydianScale = [
+// Beta mode scale frequencies — 実験的な音階構成
+const betaModeScale = [
     185.00,  // F#3
     196.00,  // G3
-    220.00,  // A3
+    73.42,   // D2
     246.94,  // B3
     277.18,  // C#4
     293.66,  // D4
     329.63,  // E4
     392.00,  // G4
     880.00,  // A5
-    1108.73, // C#6
+    1046.50, // C6
     1174.66  // D6
 ];
 
 // 対応する音名
-const lydianNoteNames = [
-    "F#3","G3","A3","B3","C#4","D4","E4","G4","A5","C#6","D6"
+const betaModeNoteNames = [
+    "F#3","G3","D2","B3","C#4","D4","E4","G4","A5","C6","D6"
 ];
 
-// Alias for existing code
-const phrygianScale = lydianScale;
-const phrygianNoteNames = lydianNoteNames;
+// Alias for existing code (backward compatibility)
+const lydianScale = betaModeScale;
+const lydianNoteNames = betaModeNoteNames;
+const phrygianScale = betaModeScale;
+const phrygianNoteNames = betaModeNoteNames;
+const mixolydianScale = betaModeScale;
+const mixolydianNoteNames = betaModeNoteNames;
 
 // -----------------------------
-//  playableScale : B2〜D5 から A2・D3 を除いたライン用スケール
-//    idx >= 2 で A2 以前をカット、さらに idx !== 4 で D3 を除外
+//  playableScale : Beta modeスケールから実際のライン音用に抜粋
+//    idx >= 2 で低音域をカット、さらに idx !== 4 で C#4 を除外
+//    実験的な音階構成
 // -----------------------------
-const playableScale = lydianScale.filter((_, idx) => idx >= 2 && idx !== 4);
-const playableNoteNames = lydianNoteNames.filter((_, idx) => idx >= 2 && idx !== 4);
+const playableScale = betaModeScale.filter((_, idx) => idx >= 2 && idx !== 4);
+const playableNoteNames = betaModeNoteNames.filter((_, idx) => idx >= 2 && idx !== 4);
 
 // Add below Tone.js globals
 let reverbNode = null;
@@ -195,7 +200,7 @@ function getFrequencyFromLineLength(lineLength) {
     const inverted = 1 - normalized;                          // 短いほど1
     const curved = Math.pow(inverted, 0.6);                   // カーブをかけて短線強調
 
-    // playableScale 0 = B2, 最終 = D5 (D3 を除外)
+    // playableScale: Beta mode - D2(最低音) 〜 D6(最高音), C#4除外
     let index = Math.round(curved * (playableScale.length - 1)); // 0〜len-1
     index = Math.max(0, Math.min(index, playableScale.length - 1));
 
