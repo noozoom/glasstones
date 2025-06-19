@@ -8,8 +8,7 @@
     <!-- p5.js library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
     
-    <!-- Tone.js library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Tone.js removed to avoid conflicts with Web Audio API -->
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
@@ -145,12 +144,11 @@
     
     <!-- Game scripts -->
     <script src="sound_simple.js"></script>
-    <script src="sound.js"></script>
     <script src="score.js"></script>
     <script src="sketch.js"></script>
     
     <script>
-      // Background image fade-in
+      // Background image fade-in and audio initialization
       document.addEventListener('DOMContentLoaded', function() {
         const backgroundImg = document.querySelector('.background-image');
         
@@ -164,6 +162,9 @@
           }, 100); // Small delay for smooth transition
         };
         img.src = 'assets/rust_bg.jpg';
+        
+        // Audio system will be initialized when user clicks START button
+        console.log('Audio system will initialize after user interaction');
       });
       
       // Touch to Start functionality
@@ -187,14 +188,10 @@
               touchToStart.classList.remove('clicked');
             }, 100);
             
-            // Tone.jsのオーディオコンテキストを開始
-            try {
-              if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
-                await Tone.start();
-                console.log('Audio context started');
-              }
-            } catch (error) {
-              console.log('Audio context start failed:', error);
+            // Initialize audio system with user interaction
+            if (typeof window.initSimpleAudio === 'function') {
+              window.initSimpleAudio();
+              console.log('Audio system initialized with user interaction');
             }
             
             // アニメーションを停止してフェードアウト開始
@@ -207,12 +204,12 @@
               touchToStart.style.display = 'none';
               console.log('Touch to start hidden');
               
-              // Play start sound (A4) as game start signal after 100ms
+              // Play start sound immediately (20ms after start button press)
               setTimeout(() => {
                 if (typeof window.playStartSound === 'function') {
                   window.playStartSound();
                 }
-              }, 100); // 100ms後にスタート音（押してすぐ）
+              }, 20); // 20ms後にスタート音（即座に）
               
               // Start the game properly
               if (typeof startGame === 'function') {

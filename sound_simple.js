@@ -75,19 +75,19 @@ function updateLUFSMeasurement() {
     return;
 }
 
-// Initialize simple audio system
+// Initialize simple audio system (user interaction required)
 function initSimpleAudio() {
     if (isAudioReady) return;
     
-    console.log('Initializing lightweight audio with limiter only...');
+    console.log('Initializing audio system with user interaction...');
     
     try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
         // Create simplified processing chain (no compressor for better performance)
-        // masterGain -> limiter -> analyser -> destination
+        // masterGain -> limiter -> destination
         
-        // Create master gain node and set to 0 initially (プツ音防止)
+        // Create master gain node and keep at 0 until game starts
         masterGain = audioContext.createGain();
         masterGain.gain.setValueAtTime(0, audioContext.currentTime);
         
@@ -99,64 +99,79 @@ function initSimpleAudio() {
         limiter.attack.setValueAtTime(0.002, audioContext.currentTime);     // 2ms attack
         limiter.release.setValueAtTime(0.02, audioContext.currentTime);     // 20ms release
         
-        // iPhone performance: Skip heavy analyser processing
-        // analyser = audioContext.createAnalyser();
-        // analyser.fftSize = 1024;
-        // analyser.smoothingTimeConstant = 0.5;
-        
         // Ultra-lightweight processing chain: masterGain -> limiter -> destination
         masterGain.connect(limiter);
         limiter.connect(audioContext.destination);
         
-        console.log('Ultra-lightweight processing chain: masterGain -> limiter -> destination (no analyser)');
+        console.log('Audio processing chain ready: masterGain -> limiter -> destination');
         
+        // CRITICAL: Must resume audio context after user interaction
         if (audioContext.state === 'suspended') {
             audioContext.resume().then(() => {
-                console.log('Audio context resumed');
+                console.log('Audio context resumed after user interaction (volume 0)');
                 isAudioReady = true;
-                // 30ms後にマスターボリュームを素早くフェードイン（スタート音対応）
-                setTimeout(() => {
-                    if (masterGain) {
-                        // 現在の値から素早くフェードイン
-                        masterGain.gain.cancelScheduledValues(audioContext.currentTime);
-                        masterGain.gain.setValueAtTime(0, audioContext.currentTime);
-                        masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.03); // 30ms後に極小値
-                        masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 0.08); // 80msで通常ボリュームに（400%相当: 1.58 × 4.0）
-                        console.log('Master volume fading in over 80ms for quick start sound response');
-                        // iPhone performance: Skip heavy LUFS monitoring
-                        // setInterval(updateLUFSMeasurement, 200);
-                    }
-                }, 30);
-                // 1秒遅延でドローンを開始（マスターフェードイン完了後）
-                setTimeout(() => {
-                    startDrones();
-                }, 1000);
+            }).catch(error => {
+                console.error('Failed to resume audio context:', error);
             });
         } else {
+            console.log('Audio context ready (volume 0)');
             isAudioReady = true;
-            // 30ms後にマスターボリュームを素早くフェードイン（スタート音対応）
-            setTimeout(() => {
-                if (masterGain) {
-                    // 現在の値から素早くフェードイン
-                    masterGain.gain.cancelScheduledValues(audioContext.currentTime);
-                    masterGain.gain.setValueAtTime(0, audioContext.currentTime);
-                    masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.03); // 30ms後に極小値
-                    masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 0.08); // 80msで通常ボリュームに（400%相当: 1.58 × 4.0）
-                    console.log('Master volume fading in over 80ms for quick start sound response');
-                    // iPhone performance: Skip heavy LUFS monitoring
-                    // setInterval(updateLUFSMeasurement, 200);
-                }
-            }, 30);
-            // 1秒遅延でドローンを開始（マスターフェードイン完了後）
-            setTimeout(() => {
-                startDrones();
-            }, 1000);
         }
         
         window.simpleAudioContext = audioContext;
         
     } catch (error) {
         console.error('Failed to initialize simple audio:', error);
+    }
+}
+
+// Activate master volume when game starts (20ms -> 70ms fade-in)
+function activateMasterVolume() {
+    if (!isAudioReady || !masterGain || !window.simpleAudioContext) {
+        console.log('Audio not ready for volume activation, trying to initialize...');
+        // Try to initialize if not ready
+        if (typeof window.initSimpleAudio === 'function') {
+            window.initSimpleAudio();
+            // Retry after a short delay
+            setTimeout(() => {
+                activateMasterVolume();
+            }, 200);
+        }
+        return;
+    }
+    
+    const audioContext = window.simpleAudioContext;
+    console.log('Activating master volume: 20ms -> 70ms fade-in');
+    
+    // Ensure audio context is running
+    if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('Audio context resumed for volume activation');
+            proceedWithVolumeActivation();
+        }).catch(error => {
+            console.error('Failed to resume audio context for volume:', error);
+        });
+    } else {
+        proceedWithVolumeActivation();
+    }
+    
+    function proceedWithVolumeActivation() {
+        // Fast master volume fade-in for immediate start sound response
+        setTimeout(() => {
+            if (masterGain) {
+                masterGain.gain.cancelScheduledValues(audioContext.currentTime);
+                masterGain.gain.setValueAtTime(0, audioContext.currentTime);
+                masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.02); // 20ms後に極小値
+                masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 0.07); // 70msで通常ボリュームに（400%相当: 1.58 × 4.0）
+                console.log('Master volume: 20ms -> 70ms fade-in started');
+            }
+        }, 0); // 即座に開始
+        
+        // Start drones immediately after volume activation (no 1 second delay)
+        setTimeout(() => {
+            startDrones();
+            console.log('Drones started immediately after volume activation');
+        }, 100); // 100ms後（音量フェードイン完了後）
     }
 }
 
@@ -512,6 +527,7 @@ function playStartSound() {
 // Export for global access
 if (typeof window !== 'undefined') {
     window.initSimpleAudio = initSimpleAudio;
+    window.activateMasterVolume = activateMasterVolume;
     window.playSimpleSound = playSimpleSound;
     window.playStartSound = playStartSound;
     window.updateDronePanning = updateDronePanning;

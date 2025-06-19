@@ -1077,11 +1077,18 @@ function startGame() {
     fadeOutStartMessage();
     gameStarted = true; // Enable drawing after start button is clicked
     
-    // Initialize simple audio when user starts the game
+    // Initialize audio system with user interaction, then activate volume
     if (typeof window.initSimpleAudio === 'function') {
         window.initSimpleAudio();
-    } else if (typeof initializeAudio === 'function') {
-        initializeAudio();
+        console.log('Audio system initialized with user interaction');
+        
+        // Activate master volume after initialization
+        setTimeout(() => {
+            if (typeof window.activateMasterVolume === 'function') {
+                window.activateMasterVolume();
+                console.log('Master volume activated for game start');
+            }
+        }, 100); // 100ms delay for initialization
     }
     
     // Ensure no point is created on game start
