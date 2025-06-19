@@ -92,61 +92,61 @@ function initializeAudio() {
 function setupDrone() {
     // Detect mobile devices for extra audio safety
     const isMobile = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-    const fadeTime = isMobile ? 4 : 3; // Longer fade on mobile
+    const fadeTime = isMobile ? 10 : 10; // Very slow 10-second fade on both platforms
     
-    // ---------- A2 Drone ----------
+    // ---------- A3 Drone ---------- (オクターブ上げて音量20%削減)
     dronePanner = new Tone.Panner(0).toDestination();
     const droneGain = new Tone.Gain(0).connect(dronePanner);
     drone = new Tone.Oscillator({
-        frequency: 110.00, // A2 (110.00Hz) - direct frequency
+        frequency: 220.00, // A3 (220.00Hz) - オクターブ上げ（A2の倍）
         type: "sine",
-        volume: -20 // Base volume
+        volume: -23 // Base volume 20%削減（-20 → -23dB）
     }).connect(droneGain);
     
-    // Mobile-safe drone start
+    // Mobile-safe drone start with very slow fade-in
     if (isMobile) {
         // Extra delay before starting on mobile
         setTimeout(() => {
             drone.start();
-            // Start completely silent, then fade in over 4 seconds on mobile
+            // Start completely silent, then fade in over 10 seconds
             droneGain.gain.setValueAtTime(0, Tone.now());
-            droneGain.gain.exponentialRampTo(0.0001, 0.2); // Very quiet first, longer ramp
-            droneGain.gain.exponentialRampTo(0.422, fadeTime);
+            droneGain.gain.exponentialRampTo(0.0001, 0.5); // Very quiet first, extended ramp
+            droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
         }, 200); // 200ms delay on mobile
     } else {
         drone.start();
-        // Start completely silent, then fade in over 3 seconds on desktop
+        // Start completely silent, then fade in over 10 seconds on desktop
         droneGain.gain.setValueAtTime(0, Tone.now());
-        droneGain.gain.exponentialRampTo(0.001, 0.1);
-        droneGain.gain.exponentialRampTo(0.422, fadeTime);
+        droneGain.gain.exponentialRampTo(0.001, 0.5);
+        droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
     }
     drone.gainNode = droneGain;
 
-    // ---------- D3 Drone ---------- (frequency 146.83Hz)
+    // ---------- D3 Drone ---------- (frequency 146.83Hz, 音量20%削減)
     droneD3Panner = new Tone.Panner(0).toDestination();
     const droneD3Gain = new Tone.Gain(0).connect(droneD3Panner);
     droneD3 = new Tone.Oscillator({
         frequency: 146.83, // D3
         type: "sine",
-        volume: -20
+        volume: -23 // Base volume 20%削減（-20 → -23dB）
     }).connect(droneD3Gain);
     
-    // Mobile-safe D3 drone start
+    // Mobile-safe D3 drone start with very slow fade-in
     if (isMobile) {
         // Extra delay before starting on mobile
         setTimeout(() => {
             droneD3.start();
-            // Start completely silent, then fade in over 4 seconds on mobile
+            // Start completely silent, then fade in over 10 seconds
             droneD3Gain.gain.setValueAtTime(0, Tone.now());
-            droneD3Gain.gain.exponentialRampTo(0.0001, 0.2); // Very quiet first, longer ramp
-            droneD3Gain.gain.exponentialRampTo(0.422, fadeTime);
-        }, 250); // Slightly staggered from first drone
+            droneD3Gain.gain.exponentialRampTo(0.0001, 0.5); // Very quiet first, extended ramp
+            droneD3Gain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+        }, 400); // Slightly more staggered from first drone
     } else {
         droneD3.start();
-        // Start completely silent, then fade in over 3 seconds on desktop
+        // Start completely silent, then fade in over 10 seconds on desktop
         droneD3Gain.gain.setValueAtTime(0, Tone.now());
-        droneD3Gain.gain.exponentialRampTo(0.001, 0.1);
-        droneD3Gain.gain.exponentialRampTo(0.422, fadeTime);
+        droneD3Gain.gain.exponentialRampTo(0.001, 0.5);
+        droneD3Gain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
     }
     droneD3.gainNode = droneD3Gain;
 }
