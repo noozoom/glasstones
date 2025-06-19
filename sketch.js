@@ -18,7 +18,9 @@ let draftLayer;    // Realtime preview layer (no fog interaction)
 let gameStarted = false;
 
 // === デバイス判定 & パラメータ自動調整 ===
-const IS_MOBILE = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+// タッチデバイス統一判定（指という物理的制約を考慮）
+const IS_TOUCH_DEVICE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+const IS_MOBILE = IS_TOUCH_DEVICE; // 後方互換性のため
 
 // Line properties
 const MAX_LINES = 8;

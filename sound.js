@@ -200,9 +200,9 @@ function setupSynthPool() {
 function getFrequencyFromLineLength(lineLength) {
     // 画面対角線の1/4を基準長とし、短い線ほど高音になるよう指数カーブでマッピング
     const maxLength = Math.hypot(width, height) * 0.25; // 約画面1/4 (半分に短縮)
-    // モバイルでは音階変化を緩やかに（より長い線で低音が出るよう調整）
-    const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-    const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 1.0 : maxLength * 0.67; // Mobile: 2.5倍の長さで低音（0.4→1.0）
+    // タッチデバイスでは物理的制約を考慮（指で描ける距離は画面サイズに関係なく同程度）
+    const IS_TOUCH_DEVICE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+    const effectiveMax = IS_TOUCH_DEVICE ? maxLength * 1.0 : maxLength * 0.67; // タッチ: 1.0倍、PC: 0.67倍
     const normalized = Math.min(lineLength / effectiveMax, 1);   // 0〜1 (長いほど1)
     const inverted = 1 - normalized;                          // 短いほど1
     const curved = Math.pow(inverted, 0.6);                   // カーブをかけて短線強調
@@ -472,8 +472,8 @@ function playStartSound() {
         
         // Calculate line length that would produce this frequency
         const maxLength = Math.hypot(width || 800, height || 600) * 0.25;
-        const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-        const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 1.0 : maxLength * 0.67;
+        const IS_TOUCH_DEVICE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+        const effectiveMax = IS_TOUCH_DEVICE ? maxLength * 1.0 : maxLength * 0.67;
         
         // Reverse the mapping: we want the line length that produces closestIndex
         const normalized = closestIndex / (playableScale.length - 1); // 0〜1
