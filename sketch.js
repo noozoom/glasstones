@@ -1039,31 +1039,10 @@ if (typeof window !== 'undefined') {
         console.log('HitInfo updated', note, len.toFixed(1), freq.toFixed(1));
     }
     
-    // LUFS info display function
+    // LUFS info display function (disabled for iPhone performance)
     window.updateLUFSInfo = function(info) {
-        let lufsEl = document.getElementById('lufs-display');
-        if (!lufsEl) {
-            // Element missing. Create on the fly.
-            const container = document.getElementById('game-container') || document.body;
-            lufsEl = document.createElement('div');
-            lufsEl.id = 'lufs-display';
-            lufsEl.style.position = 'absolute';
-            lufsEl.style.top = '80px';
-            lufsEl.style.left = '20px';
-            lufsEl.style.color = 'white';
-            lufsEl.style.fontSize = '14px';
-            lufsEl.style.zIndex = '1000';
-            lufsEl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
-            lufsEl.style.background = 'rgba(0,0,0,0.5)';
-            lufsEl.style.padding = '5px 10px';
-            lufsEl.style.borderRadius = '5px';
-            lufsEl.style.fontFamily = '"Courier New", monospace';
-            lufsEl.style.border = '1px solid rgba(255,255,255,0.2)';
-            container.appendChild(lufsEl);
-        }
-        
-        const lufsText = `LUFS: ${info.currentLUFS.toFixed(1)}dB (target: ${info.targetLUFS.toFixed(1)}dB) | Gain: ${(info.autoGainAdjustment * 100).toFixed(0)}% | Lim: ${info.limiterReduction.toFixed(1)}dB`;
-        lufsEl.textContent = lufsText;
+        // Display disabled for mobile performance
+        // console.log(`LUFS: ${info.currentLUFS.toFixed(1)}dB | Gain: ${(info.autoGainAdjustment * 100).toFixed(0)}%`);
     }
 }
 

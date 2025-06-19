@@ -66,39 +66,11 @@ function calculateLUFS(audioData) {
 }
 
 // Update LUFS measurement and auto-gain
+// iPhone performance: Completely disable heavy LUFS measurement
 function updateLUFSMeasurement() {
-    if (!analyser || !isAudioReady) return;
-    
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Float32Array(bufferLength);
-    analyser.getFloatTimeDomainData(dataArray);
-    
-    // Calculate current LUFS
-    currentLUFS = calculateLUFS(dataArray);
-    
-    // Auto-gain adjustment to reach target LUFS (lighter processing)
-    const lufsError = targetLUFS - currentLUFS;
-    if (Math.abs(lufsError) > 2.0) { // Only adjust if error > 2 LUFS (less frequent)
-        const adjustment = Math.pow(10, lufsError / 20); // dB to linear
-        autoGainAdjustment = Math.max(0.2, Math.min(4.0, autoGainAdjustment * adjustment * 0.02 + autoGainAdjustment * 0.98)); // Slower, wider range
-        
-        if (masterGain && window.simpleAudioContext) {
-            const now = window.simpleAudioContext.currentTime;
-            const targetGain = 1.58 * autoGainAdjustment; // Base +10dB (3.16→1.58 for headroom) * auto adjustment
-            masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.2); // Slower ramp
-        }
-    }
-    
-    // Update display less frequently
-    if (Math.random() < 0.2) { // Only 20% of the time
-        updateLUFSDisplay();
-    }
-    
-    // Log LUFS info every 4 seconds (less frequent)
-    if (Date.now() % 4000 < 200) {
-        const limReduction = limiter ? limiter.reduction.toFixed(1) : '0.0';
-        console.log(`LUFS: ${currentLUFS.toFixed(1)} (target: ${targetLUFS}) | Auto-gain: ${(autoGainAdjustment * 100).toFixed(1)}% | Lim: ${limReduction}dB`);
-    }
+    // Disabled for iPhone performance - no analyser, no LUFS calculation
+    // Just maintain fixed gain for stable audio
+    return;
 }
 
 // Initialize simple audio system
@@ -125,17 +97,16 @@ function initSimpleAudio() {
         limiter.attack.setValueAtTime(0.002, audioContext.currentTime);     // 2ms attack
         limiter.release.setValueAtTime(0.02, audioContext.currentTime);     // 20ms release
         
-        // Create analyser for LUFS measurement (smaller FFT for performance)
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 1024; // Smaller FFT for better performance
-        analyser.smoothingTimeConstant = 0.5;
+        // iPhone performance: Skip heavy analyser processing
+        // analyser = audioContext.createAnalyser();
+        // analyser.fftSize = 1024;
+        // analyser.smoothingTimeConstant = 0.5;
         
-        // Connect the simplified processing chain
+        // Ultra-lightweight processing chain: masterGain -> limiter -> destination
         masterGain.connect(limiter);
-        limiter.connect(analyser);
-        analyser.connect(audioContext.destination);
+        limiter.connect(audioContext.destination);
         
-        console.log('Lightweight processing chain: masterGain -> limiter -> analyser -> destination');
+        console.log('Ultra-lightweight processing chain: masterGain -> limiter -> destination (no analyser)');
         
         if (audioContext.state === 'suspended') {
             audioContext.resume().then(() => {
@@ -148,10 +119,10 @@ function initSimpleAudio() {
                         masterGain.gain.cancelScheduledValues(audioContext.currentTime);
                         masterGain.gain.setValueAtTime(0, audioContext.currentTime);
                         masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1); // 100ms後に極小値
-                        masterGain.gain.exponentialRampToValueAtTime(1.58, audioContext.currentTime + 3.1); // 3秒かけてゆっくりフェードイン
+                        masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 3.1); // 3秒かけてゆっくりフェードイン（400%相当: 1.58 × 4.0）
                         console.log('Master volume fading in over 3 seconds with safe exponential ramp');
-                        // Start LUFS monitoring (less frequent)
-                        setInterval(updateLUFSMeasurement, 200); // Update every 200ms (lighter)
+                        // iPhone performance: Skip heavy LUFS monitoring
+                        // setInterval(updateLUFSMeasurement, 200);
                     }
                 }, 500);
                 // 4秒遅延でドローンを開始（マスターフェードイン完了後）
@@ -168,10 +139,10 @@ function initSimpleAudio() {
                     masterGain.gain.cancelScheduledValues(audioContext.currentTime);
                     masterGain.gain.setValueAtTime(0, audioContext.currentTime);
                     masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1); // 100ms後に極小値
-                    masterGain.gain.exponentialRampToValueAtTime(1.58, audioContext.currentTime + 3.1); // 3秒かけてゆっくりフェードイン
+                    masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 3.1); // 3秒かけてゆっくりフェードイン（400%相当: 1.58 × 4.0）
                     console.log('Master volume fading in over 3 seconds with safe exponential ramp');
-                    // Start LUFS monitoring (less frequent)
-                    setInterval(updateLUFSMeasurement, 200); // Update every 200ms (lighter)
+                    // iPhone performance: Skip heavy LUFS monitoring
+                    // setInterval(updateLUFSMeasurement, 200);
                 }
             }, 500);
             // 4秒遅延でドローンを開始（マスターフェードイン完了後）
@@ -208,7 +179,7 @@ function startDrones() {
         // D3は30秒かけてゆっくりとフェードイン（メインドローン）
         droneGainD3.gain.setValueAtTime(0, now);
         droneGainD3.gain.exponentialRampToValueAtTime(0.0001, now + 1); // 1秒後に極小値
-        droneGainD3.gain.exponentialRampToValueAtTime(0.01, now + 30); // 30秒かけて最大値へ（+10dB: 0.00315 * 3.16）
+        droneGainD3.gain.exponentialRampToValueAtTime(0.0025, now + 30); // 30秒かけて最大値へ（400%ゲイン対応: 0.01 / 4.0）
         
         droneD3.start(now); // 即座に開始
         
@@ -227,7 +198,7 @@ function startDrones() {
         // A3は少し遅れて開始
         droneGainA3.gain.setValueAtTime(0, now);
         droneGainA3.gain.exponentialRampToValueAtTime(0.0001, now + 2); // 2秒後に極小値
-        droneGainA3.gain.exponentialRampToValueAtTime(0.0074, now + 35); // 35秒かけて最大値へ（+10dB: 0.002333 * 3.16）
+        droneGainA3.gain.exponentialRampToValueAtTime(0.00185, now + 35); // 35秒かけて最大値へ（400%ゲイン対応: 0.0074 / 4.0）
         
         droneA3.start(now + 1); // 1秒遅れて開始
         
@@ -421,8 +392,8 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
         const freqProgress = (frequency - minFreq) / (maxFreq - minFreq); // 0→1 (高音ほど1)
         const freqVolumeMultiplier = 1.0 - (freqProgress * 0.55); // 100% → 45% (55% reduction)
         
-        // 最終音量計算
-        const baseVolume = 0.493; // ベース音量（+10dB: 0.156 * 3.16）
+        // 最終音量計算（400%ゲイン対応）
+        const baseVolume = 0.124; // ベース音量（400%ゲイン時と同等: 0.493 / 4.0）
         const finalVolume = baseVolume * consecutiveMultiplier * ageFactor * freqVolumeMultiplier * volumeMultiplier;
         
         // ドキュメント通りのエンベロープ: A 0.5s / D 0.2s / S 0.3 / R 5s
@@ -467,13 +438,13 @@ function updateDronePanning(ballX) {
     }
 }
 
-// Get current LUFS and dynamics info
+// Get current LUFS and dynamics info (simplified for iPhone)
 function getLUFSInfo() {
     return {
-        currentLUFS: currentLUFS,
-        targetLUFS: targetLUFS,
-        autoGainAdjustment: autoGainAdjustment,
-        limiterReduction: limiter ? limiter.reduction : 0
+        currentLUFS: -14.0, // Fixed value for iPhone performance
+        targetLUFS: -14.0,
+        autoGainAdjustment: 4.0, // Fixed 400% (same as before)
+        limiterReduction: 0
     };
 }
 

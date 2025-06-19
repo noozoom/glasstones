@@ -104,7 +104,7 @@ function setupDrone() {
     droneD3 = new Tone.Oscillator({
         frequency: 146.83, // D3 - メインドローン（ルート音）
         type: "sine",
-        volume: -23 // Base volume 20%削減（-20 → -23dB）
+        volume: -11 // Base volume 400%相当（-23 + 12dB = -11dB）
     }).connect(droneD3Gain);
     
     // Mobile-safe D3 drone start with very slow 20-second fade-in
@@ -115,14 +115,14 @@ function setupDrone() {
             // Start completely silent, then fade in over 20 seconds
             droneD3Gain.gain.value = 0;
             droneD3Gain.gain.exponentialRampTo(0.0001, 1); // Very quiet first, extended ramp
-            droneD3Gain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+            droneD3Gain.gain.exponentialRampTo(1.348, fadeTime); // 400%相当: 0.337 × 4.0 = 1.348
         }, 200); // 200ms delay on mobile
     } else {
         droneD3.start();
         // Start completely silent, then fade in over 20 seconds on desktop
         droneD3Gain.gain.value = 0;
         droneD3Gain.gain.exponentialRampTo(0.001, 1);
-        droneD3Gain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+        droneD3Gain.gain.exponentialRampTo(1.348, fadeTime); // 400%相当: 0.337 × 4.0 = 1.348
     }
     droneD3.gainNode = droneD3Gain;
 
@@ -132,7 +132,7 @@ function setupDrone() {
     drone = new Tone.Oscillator({
         frequency: 220.00, // A3 (220.00Hz) - サブドローン（5度上）
         type: "sine",
-        volume: -23 // Base volume 20%削減（-20 → -23dB）
+        volume: -11 // Base volume 400%相当（-23 + 12dB = -11dB）
     }).connect(droneGain);
     
     // Mobile-safe A3 drone start with very slow 20-second fade-in
@@ -143,14 +143,14 @@ function setupDrone() {
             // Start completely silent, then fade in over 20 seconds
             droneGain.gain.value = 0;
             droneGain.gain.exponentialRampTo(0.0001, 1); // Very quiet first, extended ramp
-            droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+            droneGain.gain.exponentialRampTo(1.348, fadeTime); // 400%相当: 0.337 × 4.0 = 1.348
         }, 400); // Slightly more staggered from first drone
     } else {
         drone.start();
         // Start completely silent, then fade in over 20 seconds on desktop
         droneGain.gain.value = 0;
         droneGain.gain.exponentialRampTo(0.001, 1);
-        droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+        droneGain.gain.exponentialRampTo(1.348, fadeTime); // 400%相当: 0.337 × 4.0 = 1.348
     }
     drone.gainNode = droneGain;
 }
@@ -170,7 +170,7 @@ function setupSynthPool() {
                 sustain: 0.3,
                 release: 7.0 // Extend release to 7 seconds (4 + 3)
             },
-            volume: -15
+            volume: -3 // 400%相当（-15 + 12dB = -3dB）
         });
         // Each synth routed via its own panner
         const panner = new Tone.Panner(0);
