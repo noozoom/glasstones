@@ -10,6 +10,9 @@ let lines = []; // Array to store drawn lines
 let points = []; // Array to store single-click points (hexagons)
 let ball = {}; // Single ball object
 let backgroundImg; // Background advertisement image
+let backgroundAlpha = 0; // Control background alpha for smooth fade-in effect
+let backgroundFadeStartTime = 0; // When fade-in started
+let backgroundFading = false; // Whether fade-in is in progress
 let fogLayer;      // Graphics layer for fog overlay
 let draftLayer;    // Realtime preview layer (no fog interaction)
 let gameStarted = false;
@@ -142,10 +145,20 @@ function updateRipples() {
 // -----------------------------
 function preload() {
     backgroundImg = loadImage('assets/rust_bg.jpg', () => {
-        console.log('Rust background loaded successfully');
+        console.log('Rust background loaded successfully in p5.js');
+        // Start fade-in after 1 second delay
+        setTimeout(() => {
+            console.log('Starting p5.js background smooth fade-in (2s duration)...');
+            backgroundFading = true;
+            backgroundFadeStartTime = millis();
+        }, 1000); // 1秒後にフェードイン開始
     }, err => {
         console.error('Rust background load failed, loading fallback');
         backgroundImg = loadImage('assets/027_01.jpg');
+        setTimeout(() => {
+            backgroundFading = true;
+            backgroundFadeStartTime = millis();
+        }, 1000); // 1秒後にフェードイン開始
     });
 }
 
@@ -207,8 +220,26 @@ function draw() {
         console.log('Game running, frame:', frameCount);
     }
     
-    // ---------- 背景広告を描画（縦横比保持でカバー） ----------
-    if (backgroundImg) {
+    // ---------- 背景広告を描画（縦横比保持でカバー + スムーズフェードイン） ----------
+    
+    // Update background fade-in alpha
+    if (backgroundFading) {
+        const fadeInDuration = 2000; // 2 seconds fade-in
+        const elapsed = millis() - backgroundFadeStartTime;
+        backgroundAlpha = map(elapsed, 0, fadeInDuration, 0, 255);
+        backgroundAlpha = constrain(backgroundAlpha, 0, 255);
+        
+        if (backgroundAlpha >= 255) {
+            backgroundFading = false; // Fade-in complete
+            console.log('Background fade-in completed');
+        }
+    }
+    
+    // Always draw dark background first
+    background(26, 26, 26); // Same as CSS #1a1a1a
+    
+    // Draw background image with alpha if available
+    if (backgroundImg && backgroundAlpha > 0) {
         // Calculate scale to cover entire screen while maintaining aspect ratio
         let scaleX = width / backgroundImg.width;
         let scaleY = height / backgroundImg.height;
@@ -221,9 +252,10 @@ function draw() {
         let offsetX = (width - scaledWidth) / 2;
         let offsetY = (height - scaledHeight) / 2;
         
+        // Apply alpha for smooth fade-in
+        tint(255, backgroundAlpha);
         image(backgroundImg, offsetX, offsetY, scaledWidth, scaledHeight);
-    } else {
-        background(200);
+        noTint(); // Reset tint for other elements
     }
 
     // ---------- フォグレイヤーの徐々に再曇り処理 ----------

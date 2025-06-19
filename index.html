@@ -148,20 +148,10 @@
     <script src="sketch.js"></script>
     
     <script>
-      // Background image fade-in and audio initialization
+      // Audio initialization setup
       document.addEventListener('DOMContentLoaded', function() {
-        const backgroundImg = document.querySelector('.background-image');
-        
-        // Preload background image
-        const img = new Image();
-        img.onload = function() {
-          console.log('Background image loaded');
-          // Add loaded class to trigger fade-in
-          setTimeout(() => {
-            backgroundImg.classList.add('loaded');
-          }, 100); // Small delay for smooth transition
-        };
-        img.src = 'assets/rust_bg.jpg';
+        // Background image is now handled by p5.js with fade-in control
+        console.log('DOM loaded - background handled by p5.js');
         
         // Audio system will be initialized when user clicks START button
         console.log('Audio system will initialize after user interaction');
