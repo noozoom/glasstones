@@ -206,7 +206,7 @@ function getFrequencyFromLineLength(lineLength) {
     // 画面対角線の1/4を基準長とし、短い線ほど高音になるよう指数カーブでマッピング
     const maxLength = Math.hypot(width, height) * 0.25; // 約画面1/4 (半分に短縮)
     // タッチデバイスでは物理的制約を考慮（指で描ける距離は画面サイズに関係なく同程度）
-    const effectiveMax = isTouchDevice() ? maxLength * 1.0 : maxLength * 0.67; // タッチ: 1.0倍、PC: 0.67倍
+    const effectiveMax = isTouchDevice() ? maxLength * 1.33 : maxLength * 0.67; // タッチ: 1.33倍（適切な操作感）、PC: 0.67倍
     const normalized = Math.min(lineLength / effectiveMax, 1);   // 0〜1 (長いほど1)
     const inverted = 1 - normalized;                          // 短いほど1
     const curved = Math.pow(inverted, 0.6);                   // カーブをかけて短線強調
@@ -476,7 +476,7 @@ function playStartSound() {
         
         // Calculate line length that would produce this frequency
         const maxLength = Math.hypot(width || 800, height || 600) * 0.25;
-        const effectiveMax = isTouchDevice() ? maxLength * 1.0 : maxLength * 0.67;
+        const effectiveMax = isTouchDevice() ? maxLength * 1.33 : maxLength * 0.67;
         
         // Reverse the mapping: we want the line length that produces closestIndex
         const normalized = closestIndex / (playableScale.length - 1); // 0〜1
