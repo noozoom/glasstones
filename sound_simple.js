@@ -15,6 +15,19 @@ let masterGain = null;
 let limiter = null;
 let analyser = null;
 
+// EFFECT BUS SYSTEM - 共有エフェクト（音ごとに作らない）
+let effectBus = null;           // エフェクトバス
+let delayBus = null;            // 共有ディレイ
+let delayGainBus = null;        // ディレイミックス
+let delayFeedbackBus = null;    // ディレイフィードバック
+let chorusBus = null;           // 共有コーラス
+let chorusLFO = null;           // コーラスLFO
+let chorusLFOGain = null;       // コーラスLFOゲイン
+let chorusGainBus = null;       // コーラスミックス
+let reverbBus = null;           // 共有リバーブ
+let reverbGainBus = null;       // リバーブミックス
+let dryBus = null;              // ドライシグナルバス
+
 // LUFS measurement (lighter monitoring)
 let lufsBuffer = [];
 let lufsBufferSize = 2400; // 50ms at 48kHz for faster response
@@ -101,11 +114,14 @@ function initSimpleAudio() {
         limiter.attack.setValueAtTime(0.002, audioContext.currentTime);     // 2ms attack
         limiter.release.setValueAtTime(0.02, audioContext.currentTime);     // 20ms release
         
+        // CREATE EFFECT BUS SYSTEM - 共有エフェクト
+        createEffectBus(audioContext);
+        
         // Ultra-lightweight processing chain: masterGain -> limiter -> destination
         masterGain.connect(limiter);
         limiter.connect(audioContext.destination);
         
-        console.log('Audio processing chain ready: masterGain -> limiter -> destination');
+        console.log('Audio processing chain ready: [voices] -> effectBus -> masterGain -> limiter -> destination');
         
         // CRITICAL: Must resume audio context after user interaction
         if (audioContext.state === 'suspended') {
@@ -125,6 +141,138 @@ function initSimpleAudio() {
     } catch (error) {
         console.error('Failed to initialize simple audio:', error);
     }
+}
+
+// CREATE EFFECT BUS SYSTEM - すべての音が共有するエフェクト
+function createEffectBus(audioContext) {
+    console.log('Creating shared effect bus system...');
+    
+    // Main effect bus
+    effectBus = audioContext.createGain();
+    effectBus.gain.value = 1.0;
+    
+    // Dry signal bus
+    dryBus = audioContext.createGain();
+    dryBus.gain.value = 0.5; // 50% dry signal
+    
+    // SHARED DELAY SYSTEM
+    delayBus = audioContext.createDelay(1.0);
+    delayGainBus = audioContext.createGain();
+    delayFeedbackBus = audioContext.createGain();
+    
+    // デフォルトディレイ設定（中間位置）
+    const IS_MOBILE_DELAY = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+    if (IS_MOBILE_DELAY) {
+        delayBus.delayTime.value = 0.125; // 125ms (mobile)
+        delayGainBus.gain.value = 0.18;   // 18% mix
+        delayFeedbackBus.gain.value = 0.25; // 25% feedback
+    } else {
+        delayBus.delayTime.value = 0.2;   // 200ms (desktop)
+        delayGainBus.gain.value = 0.24;   // 24% mix
+        delayFeedbackBus.gain.value = 0.32; // 32% feedback
+    }
+    
+    // Delay feedback loop
+    delayBus.connect(delayFeedbackBus);
+    delayFeedbackBus.connect(delayBus);
+    
+    // SHARED CHORUS SYSTEM
+    chorusBus = audioContext.createDelay(0.1);
+    chorusLFO = audioContext.createOscillator();
+    chorusLFOGain = audioContext.createGain();
+    chorusGainBus = audioContext.createGain();
+    
+    // コーラス設定（デフォルト3秒周期）
+    chorusLFO.frequency.value = 0.33; // 3秒周期
+    chorusLFOGain.gain.value = 0.0035; // 3.5ms modulation
+    chorusBus.delayTime.value = 0.0035; // 3.5ms base delay
+    
+    const IS_MOBILE_CHORUS = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+    chorusGainBus.gain.value = IS_MOBILE_CHORUS ? 0.25 : 0.22; // Mobile: 25%, Desktop: 22%
+    
+    chorusLFO.connect(chorusLFOGain);
+    chorusLFOGain.connect(chorusBus.delayTime);
+    chorusLFO.start();
+    
+    // SHARED REVERB SYSTEM
+    reverbBus = audioContext.createConvolver();
+    reverbGainBus = audioContext.createGain();
+    reverbGainBus.gain.value = 1.0; // 100% wet
+    
+    // Create impulse response for reverb (mobile optimized)
+    const IS_MOBILE_REVERB = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+    const reverbLength = IS_MOBILE_REVERB ? 8 : 15; // Mobile: 8s, Desktop: 15s
+    const length = audioContext.sampleRate * reverbLength;
+    const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
+    for (let channel = 0; channel < 2; channel++) {
+        const channelData = impulse.getChannelData(channel);
+        for (let i = 0; i < length; i++) {
+            channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+        }
+    }
+    reverbBus.buffer = impulse;
+    
+    // EFFECT BUS ROUTING: effectBus -> [dry + delay + chorus] -> reverb -> masterGain
+    effectBus.connect(dryBus);
+    effectBus.connect(delayBus);
+    effectBus.connect(chorusBus);
+    
+    delayBus.connect(delayGainBus);
+    chorusBus.connect(chorusGainBus);
+    
+    // Mix all effects
+    const preFXGain = audioContext.createGain();
+    preFXGain.gain.value = 1.0;
+    
+    dryBus.connect(preFXGain);
+    delayGainBus.connect(preFXGain);
+    chorusGainBus.connect(preFXGain);
+    
+    // Send to reverb
+    preFXGain.connect(reverbBus);
+    reverbBus.connect(reverbGainBus);
+    reverbGainBus.connect(masterGain);
+    
+    console.log(`Effect bus created: ${reverbLength}s reverb (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'})`);
+}
+
+// UPDATE EFFECT BUS BASED ON BALL POSITION
+function updateEffectBus(ballY) {
+    if (!delayBus || !chorusLFO || ballY === undefined || !window.innerHeight) return;
+    
+    const verticalRatio = ballY / window.innerHeight; // 0 (top) to 1 (bottom)
+    const IS_MOBILE_EFFECT = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+    
+    // Update delay based on vertical position
+    if (IS_MOBILE_EFFECT) {
+        const minDelay = 0.008;  // 8ms
+        const maxDelay = 0.25;   // 250ms
+        const delayTime = minDelay + (verticalRatio * (maxDelay - minDelay));
+        delayBus.delayTime.setValueAtTime(delayTime, window.simpleAudioContext.currentTime);
+        
+        const delayMix = 0.06 + (verticalRatio * 0.24); // 6% to 30%
+        delayGainBus.gain.setValueAtTime(delayMix, window.simpleAudioContext.currentTime);
+        
+        const feedbackAmount = 0.1 + (verticalRatio * 0.3); // 10% to 40%
+        delayFeedbackBus.gain.setValueAtTime(feedbackAmount, window.simpleAudioContext.currentTime);
+    } else {
+        const minDelay = 0.01;   // 10ms
+        const maxDelay = 0.4;    // 400ms
+        const delayTime = minDelay + (verticalRatio * (maxDelay - minDelay));
+        delayBus.delayTime.setValueAtTime(delayTime, window.simpleAudioContext.currentTime);
+        
+        const delayMix = 0.08 + (verticalRatio * 0.32); // 8% to 40%
+        delayGainBus.gain.setValueAtTime(delayMix, window.simpleAudioContext.currentTime);
+        
+        const feedbackAmount = 0.15 + (verticalRatio * 0.35); // 15% to 50%
+        delayFeedbackBus.gain.setValueAtTime(feedbackAmount, window.simpleAudioContext.currentTime);
+    }
+    
+    // Update chorus frequency based on vertical position
+    const minFreq = 1.0;   // 1 Hz (1秒周期) - 上部
+    const maxFreq = 0.2;   // 0.2 Hz (5秒周期) - 下部
+    const chorusFrequency = minFreq + (verticalRatio * (maxFreq - minFreq));
+    chorusLFO.frequency.setValueAtTime(chorusFrequency, window.simpleAudioContext.currentTime);
 }
 
 // Activate master volume when game starts (20ms -> 70ms fade-in)
@@ -190,7 +338,7 @@ function startDrones() {
         droneGainD3 = audioContext.createGain();
         
         droneD3.connect(droneGainD3);
-        droneGainD3.connect(masterGain); // マスターゲインに接続
+        droneGainD3.connect(masterGain); // マスターゲインに接続（エフェクトバスを通さない）
         
         droneD3.frequency.value = 146.83; // D3
         droneD3.type = 'sine';
@@ -198,46 +346,48 @@ function startDrones() {
         // D3は30秒かけてゆっくりとフェードイン（メインドローン）
         droneGainD3.gain.setValueAtTime(0, now);
         droneGainD3.gain.exponentialRampToValueAtTime(0.0001, now + 1); // 1秒後に極小値
-        droneGainD3.gain.exponentialRampToValueAtTime(0.0025, now + 30); // 30秒かけて最大値へ（400%ゲイン対応: 0.01 / 4.0）
+        droneGainD3.gain.exponentialRampToValueAtTime(0.04, now + 30); // 30秒かけて最終音量（400%ゲイン対応: 0.01 × 4.0）
         
-        droneD3.start(now); // 即座に開始
+        droneD3.start(now);
         
-        // A3 Drone (サブドローン - 5度上) - with panning
+        // A3 Drone (サブドローン - 5度上、パンニング付き)
         droneA3 = audioContext.createOscillator();
         droneGainA3 = audioContext.createGain();
-        window.dronePannerA3 = audioContext.createStereoPanner(); // Global for ball position updates
+        window.dronePannerA3 = audioContext.createStereoPanner(); // グローバルアクセス用
         
         droneA3.connect(droneGainA3);
         droneGainA3.connect(window.dronePannerA3);
-        window.dronePannerA3.connect(masterGain); // マスターゲインに接続
+        window.dronePannerA3.connect(masterGain); // マスターゲインに接続（エフェクトバスを通さない）
         
-        droneA3.frequency.value = 220.00; // A3
+        droneA3.frequency.value = 220; // A3
         droneA3.type = 'sine';
         
-        // A3は少し遅れて開始
+        // A3は35秒かけてゆっくりとフェードイン（サブドローン、少し弱め）
         droneGainA3.gain.setValueAtTime(0, now);
         droneGainA3.gain.exponentialRampToValueAtTime(0.0001, now + 2); // 2秒後に極小値
-        droneGainA3.gain.exponentialRampToValueAtTime(0.00185, now + 35); // 35秒かけて最大値へ（400%ゲイン対応: 0.0074 / 4.0）
+        droneGainA3.gain.exponentialRampToValueAtTime(0.0296, now + 35); // 35秒かけて最終音量（400%ゲイン対応: 0.0074 × 4.0）
         
-        droneA3.start(now + 1); // 1秒遅れて開始
+        droneA3.start(now);
         
-        console.log('Drones started with very slow attack');
+        console.log('Drones started: D3 (30s fade) + A3 (35s fade, panning)');
         
     } catch (error) {
         console.error('Failed to start drones:', error);
     }
 }
 
-// Play simple sound with panning and vertical effects
+// Play simple sound with shared effect bus
 function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMultiplier = 1.0, lineAge = 0) {
-    if (!isAudioReady || !window.simpleAudioContext) {
-        console.log('Audio not ready, trying to initialize...');
-        initSimpleAudio();
+    if (!isAudioReady || !window.simpleAudioContext || !effectBus) {
+        console.log('Audio system not ready');
         return;
     }
     
     try {
         const audioContext = window.simpleAudioContext;
+        
+        // Update effect bus based on ball position
+        updateEffectBus(ballY);
         
         // Calculate frequency from line length (短い線ほど高音、長い線ほど低音)
         const maxLength = Math.hypot(window.innerWidth, window.innerHeight) * 0.25;
@@ -321,29 +471,10 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
             window.updateHitInfo(displayNoteName, lineLength, finalFrequency);
         }
         
-        // Create oscillator with panning and reverb
+        // Create oscillator with panning ONLY - エフェクトは共有バスを使用
         const osc = audioContext.createOscillator();
         const gain = audioContext.createGain();
         const panner = audioContext.createStereoPanner();
-        const convolver = audioContext.createConvolver();
-        const wetGain = audioContext.createGain();
-        const dryGain = audioContext.createGain();
-        
-        // Create impulse response for reverb (mobile optimized)
-        if (!convolver.buffer) {
-            const IS_MOBILE_REVERB = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-            const reverbLength = IS_MOBILE_REVERB ? 8 : 15; // Mobile: 8s, Desktop: 15s
-            const length = audioContext.sampleRate * reverbLength;
-            const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
-            for (let channel = 0; channel < 2; channel++) {
-                const channelData = impulse.getChannelData(channel);
-                for (let i = 0; i < length; i++) {
-                    channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
-                }
-            }
-            convolver.buffer = impulse;
-            console.log(`Reverb initialized: ${reverbLength}s (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'})`);
-        }
         
         // Set panning based on ball position
         if (ballX !== undefined && window.innerWidth) {
@@ -351,141 +482,15 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
             panner.pan.value = panValue;
         }
         
-        // Create delay node for vertical position control
-        const delayNode = audioContext.createDelay(1.0); // Max 1 second delay
-        const delayGain = audioContext.createGain();
-        const delayFeedback = audioContext.createGain();
-        
-        // Set delay based on vertical position (ballY) - optimized for mobile performance
-        if (ballY !== undefined && window.innerHeight) {
-            const verticalRatio = ballY / window.innerHeight; // 0 (top) to 1 (bottom)
-            
-            // Mobile detection for performance optimization
-            const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-            
-            if (IS_MOBILE_AUDIO) {
-                // Mobile: lighter delay settings
-                const minDelay = 0.008;  // 8ms
-                const maxDelay = 0.25;   // 250ms (much lighter for mobile)
-                const delayTime = minDelay + (verticalRatio * (maxDelay - minDelay));
-                
-                delayNode.delayTime.setValueAtTime(delayTime, audioContext.currentTime);
-                
-                const delayMix = 0.06 + (verticalRatio * 0.24); // 6% to 30% (lighter mix)
-                delayGain.gain.setValueAtTime(delayMix, audioContext.currentTime);
-                
-                const feedbackAmount = 0.1 + (verticalRatio * 0.3); // 10% to 40% (lighter feedback)
-                delayFeedback.gain.setValueAtTime(feedbackAmount, audioContext.currentTime);
-                
-                console.log(`Mobile delay: Y=${ballY}px (${(verticalRatio * 100).toFixed(1)}%) - Delay: ${(delayTime * 1000).toFixed(0)}ms, Mix: ${(delayMix * 100).toFixed(0)}%, Feedback: ${(feedbackAmount * 100).toFixed(0)}%`);
-            } else {
-                // Desktop: deeper delay settings
-                const minDelay = 0.01;  // 10ms
-                const maxDelay = 0.4;   // 400ms (reduced from 800ms)
-                const delayTime = minDelay + (verticalRatio * (maxDelay - minDelay));
-                
-                delayNode.delayTime.setValueAtTime(delayTime, audioContext.currentTime);
-                
-                const delayMix = 0.08 + (verticalRatio * 0.32); // 8% to 40% (reduced from 60%)
-                delayGain.gain.setValueAtTime(delayMix, audioContext.currentTime);
-                
-                const feedbackAmount = 0.15 + (verticalRatio * 0.35); // 15% to 50% (reduced from 70%)
-                delayFeedback.gain.setValueAtTime(feedbackAmount, audioContext.currentTime);
-                
-                console.log(`Desktop delay: Y=${ballY}px (${(verticalRatio * 100).toFixed(1)}%) - Delay: ${(delayTime * 1000).toFixed(0)}ms, Mix: ${(delayMix * 100).toFixed(0)}%, Feedback: ${(feedbackAmount * 100).toFixed(0)}%`);
-            }
-        } else {
-            // Default values if ballY is not provided (middle position)
-            const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-            if (IS_MOBILE_AUDIO) {
-                delayNode.delayTime.setValueAtTime(0.125, audioContext.currentTime); // 125ms
-                delayGain.gain.setValueAtTime(0.18, audioContext.currentTime); // 18%
-                delayFeedback.gain.setValueAtTime(0.25, audioContext.currentTime); // 25%
-            } else {
-                delayNode.delayTime.setValueAtTime(0.2, audioContext.currentTime); // 200ms
-                delayGain.gain.setValueAtTime(0.24, audioContext.currentTime); // 24%
-                delayFeedback.gain.setValueAtTime(0.32, audioContext.currentTime); // 32%
-            }
-        }
-        
-        // Setup delay feedback loop
-        delayNode.connect(delayFeedback);
-        delayFeedback.connect(delayNode);
-        
-        // Audio routing: osc -> gain -> panner -> [dry + delay] -> [chorus] -> reverb
+        // SIMPLE ROUTING: osc -> gain -> panner -> effectBus（共有エフェクト）
         osc.connect(gain);
         gain.connect(panner);
-        
-        // Split signal for delay processing
-        const delayInput = audioContext.createGain();
-        panner.connect(delayInput);
-        delayInput.connect(delayNode);
-        delayNode.connect(delayGain);
-        
-        // コーラス効果を追加（上下位置で周期を変化）
-        const chorusGain = audioContext.createGain();
-        const chorusDelay = audioContext.createDelay(0.1);
-        const chorusLFO = audioContext.createOscillator();
-        const chorusLFOGain = audioContext.createGain();
-        
-        // コーラス設定（上下位置による周期変化: 上部1秒周期、下部5秒周期）
-        let chorusFrequency = 0.33; // デフォルト3秒周期 (1/3 Hz)
-        if (ballY !== undefined && window.innerHeight) {
-            const verticalRatio = ballY / window.innerHeight; // 0 (top) to 1 (bottom)
-            
-            // Upper area: fast chorus (1 second period = 1 Hz)
-            // Lower area: slow chorus (5 second period = 0.2 Hz)
-            const minFreq = 1.0;   // 1 Hz (1 second period) - upper
-            const maxFreq = 0.2;   // 0.2 Hz (5 second period) - lower
-            chorusFrequency = minFreq + (verticalRatio * (maxFreq - minFreq));
-            
-            console.log(`Chorus frequency: Y=${ballY}px (${(verticalRatio * 100).toFixed(1)}%) - Period: ${(1/chorusFrequency).toFixed(1)}s (${chorusFrequency.toFixed(2)}Hz)`);
-        }
-        
-        chorusLFO.frequency.value = chorusFrequency;
-        chorusLFOGain.gain.value = 0.0035; // 3.5ms delay modulation
-        chorusDelay.delayTime.value = 0.0035; // 3.5ms base delay
-        
-        chorusLFO.connect(chorusLFOGain);
-        chorusLFOGain.connect(chorusDelay.delayTime);
-        chorusLFO.start();
-        
-        // Audio routing: panner -> [dry + delay + chorus] -> reverb -> destination
-        panner.connect(dryGain);
-        panner.connect(chorusDelay);
-        chorusDelay.connect(chorusGain);
-        
-        // Mix dry, delay, and chorus signals
-        const preFXGain = audioContext.createGain();
-        dryGain.connect(preFXGain);
-        delayGain.connect(preFXGain);  // Add delay to the mix
-        chorusGain.connect(preFXGain);
-        
-        // Send mixed signal to reverb
-        preFXGain.connect(convolver);
-        convolver.connect(wetGain);
-        wetGain.connect(masterGain); // マスターゲインに接続
-        
-        // Gain settings (optimized for mobile performance)
-        const IS_MOBILE_AUDIO_GAIN = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-        if (IS_MOBILE_AUDIO_GAIN) {
-            // Mobile: lighter processing
-            dryGain.gain.value = 0.55; // 55% dry (more dry signal for mobile)
-            chorusGain.gain.value = 0.25; // 25% chorus
-            // delayGain is set dynamically: Mobile 6-30%
-        } else {
-            // Desktop: richer processing
-            dryGain.gain.value = 0.5; // 50% dry
-            chorusGain.gain.value = 0.22; // 22% chorus
-            // delayGain is set dynamically: Desktop 8-40%
-        }
-        wetGain.gain.value = 1.0; // 100% wet (全信号をリバーブに送る)
+        panner.connect(effectBus); // 共有エフェクトバスに送信
         
         // ±3セントランダマイズ（すべての音に適用）
         const cents = (Math.random() * 6) - 3; // -3 to +3 cents
         const detuneFactor = Math.pow(2, cents / 1200); // セント→周波数比
         const randomizedFrequency = finalFrequency * detuneFactor;
-        console.log(`3-cent randomization applied: ${cents.toFixed(2)} cents -> ${randomizedFrequency.toFixed(2)}Hz`);
         
         osc.frequency.value = randomizedFrequency;
         osc.type = 'sine';
@@ -505,11 +510,11 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
         const freqProgress = (frequency - minFreq) / (maxFreq - minFreq); // 0→1 (高音ほど1)
         const freqVolumeMultiplier = 1.0 - (freqProgress * 0.55); // 100% → 45% (55% reduction)
         
-        // 最終音量計算（400%ゲイン対応）
+        // 最終音量計算（400%ゲイン対応、BUSシステムで音量バランス維持）
         const baseVolume = 0.124; // ベース音量（400%ゲイン時と同等: 0.493 / 4.0）
         const finalVolume = baseVolume * consecutiveMultiplier * ageFactor * freqVolumeMultiplier * volumeMultiplier;
         
-        // ドキュメント通りのエンベロープ: A 0.5s / D 0.2s / S 0.3 / R 5s
+        // ドキュメント通りのエンベロープ: A 0.5s / D 0.2s / S 0.3 / R 5s（12秒固定長）
         const now = audioContext.currentTime;
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(finalVolume, now + 0.5);      // Attack: 0.5秒
@@ -536,7 +541,7 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
             }
         }, 12000); // 12 seconds
         
-        console.log(`Playing: ${displayNoteName} (${randomizedFrequency.toFixed(1)}Hz) - Vol: ${(finalVolume*100).toFixed(1)}% (consecutive:${consecutiveMultiplier.toFixed(2)}, age:${ageFactor.toFixed(2)}, freq:${freqVolumeMultiplier.toFixed(2)}, base:${volumeMultiplier.toFixed(2)}) [Active: ${activeSounds.length}/${SYNTH_POOL_SIZE}]`);
+        console.log(`Playing: ${displayNoteName} (${randomizedFrequency.toFixed(1)}Hz) - Vol: ${(finalVolume*100).toFixed(1)}% [Active: ${activeSounds.length}/${SYNTH_POOL_SIZE}] -> Shared Effect Bus`);
         
     } catch (error) {
         console.error('Failed to play simple sound:', error);
@@ -611,23 +616,23 @@ function playStartSound() {
         // 即座にトリガー - マスターフェーダーが立ち上がるのを待たない
         setTimeout(() => {
             const centerY = window.innerHeight / 2; // Screen center Y
-        playSimpleSound(fakeLineLength, centerX, centerY, 1, 0.65, 0); // 65%音量でスタート音（プレイアブル通常音量の65%）
+            playSimpleSound(fakeLineLength, centerX, centerY, 1, 0.65, 0); // 65%音量でスタート音（プレイアブル通常音量の65%）
         }, 0); // 遅延なし
         
-        console.log(`Start sound: D4 (${targetFreq}Hz) triggered immediately - master fader will handle volume`);
+        console.log(`Start sound: D4 (${targetFreq}Hz) triggered immediately via shared effect bus`);
         
     } catch (error) {
         console.error('Failed to play start sound:', error);
     }
 }
 
-// Export for global access
+// Export functions for global access
 if (typeof window !== 'undefined') {
     window.initSimpleAudio = initSimpleAudio;
-    window.activateMasterVolume = activateMasterVolume;
     window.playSimpleSound = playSimpleSound;
-    window.playStartSound = playStartSound;
     window.updateDronePanning = updateDronePanning;
+    window.activateMasterVolume = activateMasterVolume;
+    window.playStartSound = playStartSound;
     window.getLUFSInfo = getLUFSInfo;
     window.setTargetLUFS = setTargetLUFS;
     window.updateLUFSDisplay = updateLUFSDisplay;

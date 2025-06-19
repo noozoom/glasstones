@@ -29,20 +29,20 @@ const MAX_LINE_LENGTH = 200; // Maximum points per line
 const BALL_SIZE = IS_MOBILE ? 19 : 32; // Mobile: 3/5 size (32 * 0.6 ≈ 19)
 const BALL_SPEED = 1.5;
 const COLLISION_RADIUS = BALL_SIZE / 2 + 12; // Keep same padding
-const FPS              = IS_MOBILE ? 30 : 45;
+const FPS              = IS_MOBILE ? 24 : 45; // さらに軽量化: 24fps
 // 85% 不透明程度 (≈217)
-const FOG_INITIAL_ALPHA = IS_MOBILE ? 232 : 232; // 91% opacity fog (245 - 5% = 232)
+const FOG_INITIAL_ALPHA = IS_MOBILE ? 200 : 232; // モバイル軽量化: 78% opacity
 // Adjust fog recovery constants for faster recovery (6 seconds to full opacity)
-const REFOG_ALPHA       = IS_MOBILE ? 20 : 25; // Much faster recovery - 6 seconds to full opacity
-const REFOG_INTERVAL    = 2; // Refog every 2 frames for faster recovery
+const REFOG_ALPHA       = IS_MOBILE ? 12 : 25; // モバイル軽量化: 回復速度半減
+const REFOG_INTERVAL    = IS_MOBILE ? 4 : 2; // モバイル軽量化: 4フレーム間隔
 
 // Separate recovery for lines (slower than ripples)
-const LINE_REFOG_ALPHA  = IS_MOBILE ? 6 : 8; // Slower recovery for lines to keep them visible longer
-const LINE_REFOG_INTERVAL = 4; // Refog lines every 4 frames
+const LINE_REFOG_ALPHA  = IS_MOBILE ? 3 : 8; // モバイル軽量化: さらに軽く
+const LINE_REFOG_INTERVAL = IS_MOBILE ? 8 : 4; // モバイル軽量化: 8フレーム間隔
 
 // Line visual sizes
-const LINE_MAIN_WEIGHT  = IS_MOBILE ? 23 : 23.5; // Half of previous size (46/2 = 23, 47/2 = 23.5)
-const LINE_GLOW_WEIGHT  = LINE_MAIN_WEIGHT * 1.5; // proportional glow
+const LINE_MAIN_WEIGHT  = IS_MOBILE ? 20 : 23.5; // モバイル軽量化: さらに細く
+const LINE_GLOW_WEIGHT  = IS_MOBILE ? 28 : (LINE_MAIN_WEIGHT * 1.5); // モバイル軽量化: グロー削減
 
 // Point properties (hexagon points) - defined after LINE_MAIN_WEIGHT
 const MAX_POINTS = 12; // Maximum number of points
@@ -967,6 +967,16 @@ function drawLine(lineData, doErase = true) {
     if (fadeProgress < 1) {
         push();
         const alpha = map(fadeProgress, 0, 1, 150, 0); // Fade from 150 to 0
+        
+        // モバイル軽量化: グロー効果を無効化
+        if (!IS_MOBILE) {
+            // デスクトップのみ: グロー効果
+            stroke(255, 255, 255, alpha * 0.3);
+            strokeWeight(LINE_GLOW_WEIGHT);
+            line(p1.x, p1.y, p2.x, p2.y);
+        }
+        
+        // メイン線（全デバイス共通）
         stroke(255, 255, 255, alpha);
         strokeWeight(LINE_MAIN_WEIGHT * 0.8);
         noFill();
@@ -1133,6 +1143,12 @@ function startGame() {
 function drawPreviewLine(lineData) {
     if (lineData.points.length < 2) return;
 
+    // モバイル軽量化: 簡単なプレビューのみ
+    if (IS_MOBILE) {
+        return drawPreviewLineOnCanvas(lineData);
+    }
+
+    // デスクトップ: フル機能プレビュー
     // 一時的に背景をプレビューレイヤーにコピーして透明効果を表示
     draftLayer.clear(); // プレビュー開始時にクリア
     draftLayer.push();
