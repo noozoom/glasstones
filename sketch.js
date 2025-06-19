@@ -314,18 +314,24 @@ function updateBall() {
     if (ball.x - BALL_SIZE/2 <= 0 || ball.x + BALL_SIZE/2 >= width) {
         ball.vx *= -1;
         ball.x = Math.max(BALL_SIZE/2, Math.min(ball.x, width - BALL_SIZE/2));
+        
+        // Play random sound on wall collision
+        playRandomWallSound(ball.x, ball.y);
     }
     if (ball.y - BALL_SIZE/2 <= 0 || ball.y + BALL_SIZE/2 >= height) {
         ball.vy *= -1;
         ball.y = Math.max(BALL_SIZE/2, Math.min(ball.y, height - BALL_SIZE/2));
+        
+        // Play random sound on wall collision
+        playRandomWallSound(ball.x, ball.y);
     }
     
     // Check collision with lines (with tunneling prevention)
     checkLineCollisions(prevX, prevY);
 
-    // Update drone panning to follow ball
-    if (typeof updateDronePan === 'function') {
-        updateDronePan(ball.x);
+    // Update A3 drone panning to follow ball
+    if (typeof window.updateDronePanning === 'function') {
+        window.updateDronePanning(ball.x);
     }
 }
 
@@ -456,14 +462,14 @@ function checkLineCollisions(prevX, prevY) {
             // Collision detected!
             console.log('Collision detected with line', i);
             
-            // Check if enough time has passed since last hit (500ms minimum)
+            // Check if enough time has passed since last hit (200ms minimum)
             const currentTime = millis();
             const timeSinceLastHit = currentTime - lastHitTime;
             
             let volumeMultiplier = 1.0;
-            if (timeSinceLastHit < 500) {  // If collision occurs within 500ms
+            if (timeSinceLastHit < 200) {  // If collision occurs within 200ms (より短く)
                 console.log('Hit too soon, reducing volume (', timeSinceLastHit, 'ms since last hit)');
-                volumeMultiplier = 0.7;  // Reduce volume by 30%
+                volumeMultiplier = 0.8;  // Reduce volume by 20% (より軽く)
             }
             
             // Update hit timing
@@ -479,12 +485,20 @@ function checkLineCollisions(prevX, prevY) {
             
             console.log('Consecutive hits on line', i, ':', consecutiveHits);
             
-            // Play sound with octave scaling and adjusted volume
-            if (typeof playLineSound === 'function') {
-                console.log('Calling playLineSound for line', i, 'with', lineData.points.length, 'points');
-                playLineSound(lineData, consecutiveHits, ball.x, volumeMultiplier);  // Pass volumeMultiplier
-            } else {
-                console.error('playLineSound function not found');
+            // Play sound with simple audio system (only if game has started)
+            if (gameStarted) {
+                if (typeof window.playSimpleSound === 'function') {
+                    const lineLength = calculateLineLengthFromPoints(lineData.points);
+                    const currentTime = millis();
+                    const lineAge = currentTime - lineData.startTime;
+                    console.log('Playing simple sound for line', i, 'length:', lineLength, 'ballX:', ball.x, 'consecutiveHits:', consecutiveHits);
+                    window.playSimpleSound(lineLength, ball.x, consecutiveHits, volumeMultiplier, lineAge);
+                } else if (typeof playLineSound === 'function') {
+                    console.log('Calling playLineSound for line', i, 'with', lineData.points.length, 'points');
+                    playLineSound(lineData, consecutiveHits, ball.x, volumeMultiplier);  // Pass volumeMultiplier
+                } else {
+                    console.error('No sound function available');
+                }
             }
             
             // Create collision ripples
@@ -534,17 +548,17 @@ function checkHexagonCollisions(prevX, prevY) {
                 const timeSinceLastHit = currentTime - lastHitTime;
                 
                 let volumeMultiplier = 1.0;
-                if (timeSinceLastHit < 500) {  // If collision occurs within 500ms
+                if (timeSinceLastHit < 200) {  // If collision occurs within 200ms (より短く)
                     console.log('Hit too soon, reducing volume (', timeSinceLastHit, 'ms since last hit)');
-                    volumeMultiplier = 0.7;  // Reduce volume by 30%
+                    volumeMultiplier = 0.8;  // Reduce volume by 20% (より軽く)
                 }
                 
                 lastHitTime = currentTime;
                 consecutiveHits = 1; // Reset consecutive hits for points
                 lastHitLineIndex = -1; // Reset line tracking
                 
-                // Play sound for hexagon hit (treat as a small line)
-                if (typeof playLineSound === 'function') {
+                // Play sound for hexagon hit (treat as a small line) - only if game has started
+                if (gameStarted && typeof playLineSound === 'function') {
                     // Create a fake line data for sound calculation
                     let fakeLineData = {
                         points: [p1, p2],
@@ -569,6 +583,19 @@ function checkHexagonCollisions(prevX, prevY) {
             }
         }
     }
+}
+
+function calculateLineLengthFromPoints(points) {
+    if (points.length < 2) return 0;
+    
+    let totalLength = 0;
+    for (let i = 1; i < points.length; i++) {
+        let dx = points[i].x - points[i-1].x;
+        let dy = points[i].y - points[i-1].y;
+        totalLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    return totalLength;
 }
 
 function distanceToLineSegment(px, py, x1, y1, x2, y2) {
@@ -953,6 +980,28 @@ function windowResized() {
 }
 
 // 追加: 2つの線分間の最短距離を計算
+// Play random sound when ball hits wall
+function playRandomWallSound(ballX, ballY) {
+    // Only play sound if game has started
+    if (!gameStarted) {
+        return;
+    }
+    
+    if (typeof window.playSimpleSound === 'function') {
+        // プレイアブルスケールからランダムに音を選択
+        // 画面の対角線の10-30%のランダムな長さをシミュレート
+        const minLength = Math.hypot(width, height) * 0.1;
+        const maxLength = Math.hypot(width, height) * 0.3;
+        const randomLength = minLength + Math.random() * (maxLength - minLength);
+        
+        // 壁衝突音は音量を少し下げる
+        const wallVolumeMultiplier = 0.6;
+        
+        console.log('Wall collision - playing random sound with length:', randomLength);
+        window.playSimpleSound(randomLength, ballX, 1, wallVolumeMultiplier, 0);
+    }
+}
+
 function distanceBetweenLineSegments(x1, y1, x2, y2, x3, y3, x4, y4) {
     // エンドポイントと相手線分との距離の最小値を近似的に使用
     let d1 = distanceToLineSegment(x1, y1, x3, y3, x4, y4);
@@ -989,6 +1038,33 @@ if (typeof window !== 'undefined') {
 
         console.log('HitInfo updated', note, len.toFixed(1), freq.toFixed(1));
     }
+    
+    // LUFS info display function
+    window.updateLUFSInfo = function(info) {
+        let lufsEl = document.getElementById('lufs-display');
+        if (!lufsEl) {
+            // Element missing. Create on the fly.
+            const container = document.getElementById('game-container') || document.body;
+            lufsEl = document.createElement('div');
+            lufsEl.id = 'lufs-display';
+            lufsEl.style.position = 'absolute';
+            lufsEl.style.top = '80px';
+            lufsEl.style.left = '20px';
+            lufsEl.style.color = 'white';
+            lufsEl.style.fontSize = '14px';
+            lufsEl.style.zIndex = '1000';
+            lufsEl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+            lufsEl.style.background = 'rgba(0,0,0,0.5)';
+            lufsEl.style.padding = '5px 10px';
+            lufsEl.style.borderRadius = '5px';
+            lufsEl.style.fontFamily = '"Courier New", monospace';
+            lufsEl.style.border = '1px solid rgba(255,255,255,0.2)';
+            container.appendChild(lufsEl);
+        }
+        
+        const lufsText = `LUFS: ${info.currentLUFS.toFixed(1)}dB (target: ${info.targetLUFS.toFixed(1)}dB) | Gain: ${(info.autoGainAdjustment * 100).toFixed(0)}% | Lim: ${info.limiterReduction.toFixed(1)}dB`;
+        lufsEl.textContent = lufsText;
+    }
 }
 
 function fadeOutStartMessage() {
@@ -1006,6 +1082,13 @@ function fadeOutStartMessage() {
 function startGame() {
     fadeOutStartMessage();
     gameStarted = true; // Enable drawing after start button is clicked
+    
+    // Initialize simple audio when user starts the game
+    if (typeof window.initSimpleAudio === 'function') {
+        window.initSimpleAudio();
+    } else if (typeof initializeAudio === 'function') {
+        initializeAudio();
+    }
     
     // Ensure no point is created on game start
     if (isDrawing) {

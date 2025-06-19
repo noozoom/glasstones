@@ -13,41 +13,30 @@ const SYNTH_POOL_SIZE = 32;
 // Track last time each base frequency was played
 let lastFreqTimes = {};
 
-// Beta mode scale frequencies — 実験的な音階構成
-const betaModeScale = [
-    185.00,  // F#3
-    196.00,  // G3
-    73.42,   // D2
-    246.94,  // B3
-    277.18,  // C#4
-    293.66,  // D4
-    329.63,  // E4
-    392.00,  // G4
-    880.00,  // A5
-    1046.50, // C6
-    1174.66  // D6
+// -----------------------------
+//  新しいプレイアブルスケール：B3, C3, E3, A2, G3（高音→低音順）
+// -----------------------------
+const playableScale = [
+    246.94,  // B3（最高音）
+    130.81,  // C3
+    164.81,  // E3
+    110.00,  // A2
+    196.00   // G3（最低音）
 ];
 
-// 対応する音名
-const betaModeNoteNames = [
-    "F#3","G3","D2","B3","C#4","D4","E4","G4","A5","C6","D6"
+const playableNoteNames = [
+    "B3", "C3", "E3", "A2", "G3"
 ];
 
-// Alias for existing code (backward compatibility)
-const lydianScale = betaModeScale;
-const lydianNoteNames = betaModeNoteNames;
-const phrygianScale = betaModeScale;
-const phrygianNoteNames = betaModeNoteNames;
-const mixolydianScale = betaModeScale;
-const mixolydianNoteNames = betaModeNoteNames;
-
-// -----------------------------
-//  playableScale : Beta modeスケールから実際のライン音用に抜粋
-//    idx >= 2 で低音域をカット、さらに idx !== 4 で C#4 を除外
-//    実験的な音階構成
-// -----------------------------
-const playableScale = betaModeScale.filter((_, idx) => idx >= 2 && idx !== 4);
-const playableNoteNames = betaModeNoteNames.filter((_, idx) => idx >= 2 && idx !== 4);
+// Backward compatibility aliases（既存コードのため）
+const betaModeScale = playableScale;
+const betaModeNoteNames = playableNoteNames;
+const lydianScale = playableScale;
+const lydianNoteNames = playableNoteNames;
+const phrygianScale = playableScale;
+const phrygianNoteNames = playableNoteNames;
+const mixolydianScale = playableScale;
+const mixolydianNoteNames = playableNoteNames;
 
 // Add below Tone.js globals
 let reverbNode = null;
@@ -62,98 +51,108 @@ function initializeAudio() {
         Tone.start().then(() => {
             console.log('Audio context started');
             
-            // Create chorus effect (3-second slow modulation)
-            chorusNode = new Tone.Chorus({
-                frequency: 0.33, // 3-second period (1/3 Hz)
-                delayTime: 3.5,  // 3.5ms delay for gentle effect
-                depth: 0.7,      // 70% depth for noticeable but gentle modulation
-                spread: 180      // Full stereo spread
-            }).start();
-            
-            // Create global reverb (15s decay, 100% wet)
-            reverbNode = new Tone.Reverb({decay: 15, preDelay: 0.01}).toDestination();
-            reverbNode.wet.value = 1; // 100% reverb on routed signals
-            
-            // Chain: Chorus -> Reverb -> Destination
-            chorusNode.connect(reverbNode);
-            
-            // generate impulse asynchronously
-            if (typeof reverbNode.generate === 'function') {
-                reverbNode.generate().then(() => {
-                    if (DEBUG_SOUND) console.log('Reverb generated');
-                });
-            }
+            // Wait a bit more for full initialization
+            setTimeout(() => {
+                try {
+                    // Create chorus effect (3-second slow modulation)
+                    chorusNode = new Tone.Chorus({
+                        frequency: 0.33, // 3-second period (1/3 Hz)
+                        delayTime: 3.5,  // 3.5ms delay for gentle effect
+                        depth: 0.7,      // 70% depth for noticeable but gentle modulation
+                        spread: 180      // Full stereo spread
+                    }).start();
+                    
+                    // Create global reverb (15s decay, 100% wet)
+                    reverbNode = new Tone.Reverb({decay: 15, preDelay: 0.01}).toDestination();
+                    reverbNode.wet.value = 1; // 100% reverb on routed signals
+                    
+                    // Chain: Chorus -> Reverb -> Destination
+                    chorusNode.connect(reverbNode);
+                    
+                    // generate impulse asynchronously
+                    if (typeof reverbNode.generate === 'function') {
+                        reverbNode.generate().then(() => {
+                            if (DEBUG_SOUND) console.log('Reverb generated');
+                        });
+                    }
 
-            setupDrone();
-            setupSynthPool();
-            audioInitialized = true;
+                    setupDrone();
+                    setupSynthPool();
+                    audioInitialized = true;
+                    console.log('Audio fully initialized');
+                } catch (setupError) {
+                    console.error('Failed to setup audio components:', setupError);
+                }
+            }, 100); // Wait 100ms after context start
+        }).catch(error => {
+            console.error('Failed to start Tone.js context:', error);
         });
     } catch (error) {
         console.error('Failed to initialize audio:', error);
     }
 }
 
-// Setup the A2 drone bass
+// Setup the drone bass with very slow 20-second attack
 function setupDrone() {
     // Detect mobile devices for extra audio safety
     const isMobile = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-    const fadeTime = isMobile ? 10 : 10; // Very slow 10-second fade on both platforms
+    const fadeTime = isMobile ? 20 : 20; // Very slow 20-second fade on both platforms
     
-    // ---------- A3 Drone ---------- (オクターブ上げて音量20%削減)
-    dronePanner = new Tone.Panner(0).toDestination();
-    const droneGain = new Tone.Gain(0).connect(dronePanner);
-    drone = new Tone.Oscillator({
-        frequency: 220.00, // A3 (220.00Hz) - オクターブ上げ（A2の倍）
-        type: "sine",
-        volume: -23 // Base volume 20%削減（-20 → -23dB）
-    }).connect(droneGain);
-    
-    // Mobile-safe drone start with very slow fade-in
-    if (isMobile) {
-        // Extra delay before starting on mobile
-        setTimeout(() => {
-            drone.start();
-            // Start completely silent, then fade in over 10 seconds
-            droneGain.gain.setValueAtTime(0, Tone.now());
-            droneGain.gain.exponentialRampTo(0.0001, 0.5); // Very quiet first, extended ramp
-            droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
-        }, 200); // 200ms delay on mobile
-    } else {
-        drone.start();
-        // Start completely silent, then fade in over 10 seconds on desktop
-        droneGain.gain.setValueAtTime(0, Tone.now());
-        droneGain.gain.exponentialRampTo(0.001, 0.5);
-        droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
-    }
-    drone.gainNode = droneGain;
-
-    // ---------- D3 Drone ---------- (frequency 146.83Hz, 音量20%削減)
+    // ---------- D3 Drone ---------- (メインドローン - ルート音のD)
     droneD3Panner = new Tone.Panner(0).toDestination();
     const droneD3Gain = new Tone.Gain(0).connect(droneD3Panner);
     droneD3 = new Tone.Oscillator({
-        frequency: 146.83, // D3
+        frequency: 146.83, // D3 - メインドローン（ルート音）
         type: "sine",
         volume: -23 // Base volume 20%削減（-20 → -23dB）
     }).connect(droneD3Gain);
     
-    // Mobile-safe D3 drone start with very slow fade-in
+    // Mobile-safe D3 drone start with very slow 20-second fade-in
     if (isMobile) {
         // Extra delay before starting on mobile
         setTimeout(() => {
             droneD3.start();
-            // Start completely silent, then fade in over 10 seconds
-            droneD3Gain.gain.setValueAtTime(0, Tone.now());
-            droneD3Gain.gain.exponentialRampTo(0.0001, 0.5); // Very quiet first, extended ramp
+            // Start completely silent, then fade in over 20 seconds
+            droneD3Gain.gain.value = 0;
+            droneD3Gain.gain.exponentialRampTo(0.0001, 1); // Very quiet first, extended ramp
             droneD3Gain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
-        }, 400); // Slightly more staggered from first drone
+        }, 200); // 200ms delay on mobile
     } else {
         droneD3.start();
-        // Start completely silent, then fade in over 10 seconds on desktop
-        droneD3Gain.gain.setValueAtTime(0, Tone.now());
-        droneD3Gain.gain.exponentialRampTo(0.001, 0.5);
+        // Start completely silent, then fade in over 20 seconds on desktop
+        droneD3Gain.gain.value = 0;
+        droneD3Gain.gain.exponentialRampTo(0.001, 1);
         droneD3Gain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
     }
     droneD3.gainNode = droneD3Gain;
+
+    // ---------- A3 Drone ---------- (サブドローン - 5度上のA)
+    dronePanner = new Tone.Panner(0).toDestination();
+    const droneGain = new Tone.Gain(0).connect(dronePanner);
+    drone = new Tone.Oscillator({
+        frequency: 220.00, // A3 (220.00Hz) - サブドローン（5度上）
+        type: "sine",
+        volume: -23 // Base volume 20%削減（-20 → -23dB）
+    }).connect(droneGain);
+    
+    // Mobile-safe A3 drone start with very slow 20-second fade-in
+    if (isMobile) {
+        // Extra delay before starting on mobile
+        setTimeout(() => {
+            drone.start();
+            // Start completely silent, then fade in over 20 seconds
+            droneGain.gain.value = 0;
+            droneGain.gain.exponentialRampTo(0.0001, 1); // Very quiet first, extended ramp
+            droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+        }, 400); // Slightly more staggered from first drone
+    } else {
+        drone.start();
+        // Start completely silent, then fade in over 20 seconds on desktop
+        droneGain.gain.value = 0;
+        droneGain.gain.exponentialRampTo(0.001, 1);
+        droneGain.gain.exponentialRampTo(0.337, fadeTime); // 20%削減: 0.422 → 0.337
+    }
+    drone.gainNode = droneGain;
 }
 
 // Setup synthesizer pool for line sounds
@@ -195,12 +194,12 @@ function getFrequencyFromLineLength(lineLength) {
     const maxLength = Math.hypot(width, height) * 0.25; // 約画面1/4 (半分に短縮)
     // モバイルでは音階変化を緩やかに（より長い線で低音が出るよう調整）
     const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-    const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 0.4 : maxLength * 0.67; // Mobile: 倍の長さで低音が出るよう
+    const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 1.0 : maxLength * 0.67; // Mobile: 2.5倍の長さで低音（0.4→1.0）
     const normalized = Math.min(lineLength / effectiveMax, 1);   // 0〜1 (長いほど1)
     const inverted = 1 - normalized;                          // 短いほど1
     const curved = Math.pow(inverted, 0.6);                   // カーブをかけて短線強調
 
-    // playableScale: Beta mode - D2(最低音) 〜 D6(最高音), C#4除外
+    // playableScale: B3(最高音) 〜 G3(最低音) の5音階
     let index = Math.round(curved * (playableScale.length - 1)); // 0〜len-1
     index = Math.max(0, Math.min(index, playableScale.length - 1));
 
@@ -235,8 +234,16 @@ function playLineSound(line, consecutiveHits = 1, xPos = null) {
     const frequencyForDisplay = getFrequencyFromLineLength(lineLength);
     
     if (!audioInitialized) {
-        if (DEBUG_SOUND) console.log('Audio not initialized yet, but displaying note info');
+        if (DEBUG_SOUND) console.log('Audio not initialized yet, initializing now...');
+        // Try to initialize audio on first sound request
+        initializeAudio();
         return; // Skip actual sound but display was already updated
+    }
+    
+    // Additional safety check for Tone.js context
+    if (Tone.context.state !== 'running') {
+        if (DEBUG_SOUND) console.log('Tone.js context not running, skipping sound');
+        return;
     }
 
     // Find available synth
@@ -296,8 +303,8 @@ function playLineSound(line, consecutiveHits = 1, xPos = null) {
     const ageFactor = Math.max(0.5, 1 - (lineAge / LINE_LIFETIME) * 0.5); // 100% → 50%
     
     // Calculate frequency-based volume scaling (higher notes = quieter)
-    const minFreq = playableScale[0]; // A3 (220.00Hz) - loudest
-    const maxFreq = playableScale[playableScale.length - 1]; // D6 (1174.66Hz) - quietest
+    const minFreq = playableScale[0]; // B3 (246.94Hz) - loudest
+    const maxFreq = playableScale[playableScale.length - 1]; // G3 (196.00Hz) - quietest
     const freqProgress = (frequencyForDisplay - minFreq) / (maxFreq - minFreq); // 0→1
     const freqVolumeMultiplier = 1.0 - (freqProgress * 0.55); // 100% → 45% (55% reduction)
     
@@ -311,24 +318,44 @@ function playLineSound(line, consecutiveHits = 1, xPos = null) {
     // Set panning based on position if provided
     if (xPos !== null && width) {
         const panVal = (xPos / width) * 2 - 1; // -1 (left) to 1 (right)
-        availableSynth.panner.pan.rampTo(panVal, 0.05);
+        try {
+            availableSynth.panner.pan.value = panVal;
+        } catch (error) {
+            console.warn('Failed to set pan value:', error);
+        }
     }
     
-    // Play the note
+    // Play the note with safer timing
     try {
-        availableSynth.synth.triggerAttackRelease(frequency, 5); // 5-second note per requirement
-        availableSynth.inUse = true;
-        availableSynth.lastUsed = millis();
-        availableSynth.baseFreq = frequencyForDisplay; // Store base freq for detune checking
+        // Use setTimeout to ensure Tone.js is fully ready
+        setTimeout(() => {
+            try {
+                if (availableSynth && availableSynth.synth) {
+                    availableSynth.synth.triggerAttackRelease(frequency, 5); // 5-second note per requirement
+                    availableSynth.inUse = true;
+                    availableSynth.lastUsed = millis();
+                    availableSynth.baseFreq = frequencyForDisplay; // Store base freq for detune checking
+                    
+                    if (DEBUG_SOUND) console.log(`Playing line sound: ${frequency.toFixed(2)} Hz (hit ${consecutiveHits}, vol x${volumeMultiplier.toFixed(3)})`);
+                }
+            } catch (playError) {
+                console.error('Failed to trigger note:', playError);
+            }
+        }, 10); // 10ms delay for safety
         
         // Mark synth free after note plus small buffer
         setTimeout(() => {
-            availableSynth.inUse = false;
-            availableSynth.baseFreq = null;
-            availableSynth.synth.volume.value = originalVolume;
+            if (availableSynth) {
+                availableSynth.inUse = false;
+                availableSynth.baseFreq = null;
+                try {
+                    availableSynth.synth.volume.value = originalVolume;
+                } catch (volumeError) {
+                    console.warn('Failed to reset volume:', volumeError);
+                }
+            }
         }, 8600); // 5s note + 3s release + buffer
         
-        if (DEBUG_SOUND) console.log(`Playing line sound: ${frequency.toFixed(2)} Hz (hit ${consecutiveHits}, vol x${volumeMultiplier.toFixed(3)})`);
     } catch (error) {
         console.error('Failed to play line sound:', error);
     }
@@ -340,7 +367,7 @@ function stopDrone() {
     
     try {
         // Fade out over 10 seconds then stop
-        drone.gainNode.gain.rampTo(0, 10);
+        drone.gainNode.gain.exponentialRampTo(0.001, 10);
         
         setTimeout(() => {
             if (drone) {
@@ -399,8 +426,12 @@ function testAudio() {
 function updateDronePan(ballX) {
     if (!audioInitialized || width === 0) return;
     const panVal = (ballX / width) * 2 - 1;
-    if (dronePanner) dronePanner.pan.rampTo(panVal, 0.1);
-    if (droneD3Panner) droneD3Panner.pan.rampTo(panVal, 0.1);
+    try {
+        if (dronePanner) dronePanner.pan.value = panVal;
+        if (droneD3Panner) droneD3Panner.pan.value = panVal;
+    } catch (error) {
+        console.warn('Failed to update drone pan:', error);
+    }
 }
 
 // Export for sketch.js
