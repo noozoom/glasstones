@@ -407,8 +407,6 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
         const maxLength = Math.hypot(window.innerWidth, window.innerHeight) * 0.25;
         
         // タッチデバイス統一判定（指という物理的制約を考慮）
-        const IS_TOUCH_DEVICE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
-        
         // タッチデバイスは物理的な指の動きが制約されるため、より短い線で低音を出せるように調整
         // 画面サイズに関係なく、指で描ける距離は同程度という前提
         const effectiveMax = IS_TOUCH_DEVICE ? maxLength * 1.5 : maxLength * 1.34; // タッチ: 1.5倍（3.0→1.5）、PC: 1.34倍
@@ -738,7 +736,6 @@ function playStartSound() {
         
         // 短い線でD4が出るような線の長さを計算
         const maxLength = Math.hypot(window.innerWidth, window.innerHeight) * 0.25;
-        const IS_TOUCH_DEVICE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
         const effectiveMax = IS_TOUCH_DEVICE ? maxLength * 1.5 : maxLength * 1.34;
         
         // D4のインデックス（6）から線の長さを逆算
