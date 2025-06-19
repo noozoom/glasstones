@@ -26,28 +26,28 @@ const LINE_LIFETIME = 10000; // 10 seconds in milliseconds
 const MAX_LINE_LENGTH = 200; // Maximum points per line
 
 // Ball properties
-const BALL_SIZE = IS_MOBILE ? 19 : 32; // Mobile: 3/5 size (32 * 0.6 ≈ 19)
+const BALL_SIZE = IS_MOBILE ? 28 : 32; // Mobile: 少し小さめだが見やすいサイズ (32 → 28)
 const BALL_SPEED = 1.5;
 const COLLISION_RADIUS = BALL_SIZE / 2 + 12; // Keep same padding
-const FPS              = IS_MOBILE ? 24 : 45; // さらに軽量化: 24fps
+const FPS              = IS_MOBILE ? 30 : 45; // Mobile: 30fps（24→30で滑らかに）
 // 85% 不透明程度 (≈217)
-const FOG_INITIAL_ALPHA = IS_MOBILE ? 200 : 232; // モバイル軽量化: 78% opacity
+const FOG_INITIAL_ALPHA = IS_MOBILE ? 220 : 232; // Mobile: 220（200→220で濃く）
 // Adjust fog recovery constants for faster recovery (6 seconds to full opacity)
-const REFOG_ALPHA       = IS_MOBILE ? 12 : 25; // モバイル軽量化: 回復速度半減
-const REFOG_INTERVAL    = IS_MOBILE ? 4 : 2; // モバイル軽量化: 4フレーム間隔
+const REFOG_ALPHA       = IS_MOBILE ? 18 : 25; // Mobile: 18（12→18で適度に）
+const REFOG_INTERVAL    = IS_MOBILE ? 3 : 2; // Mobile: 3フレーム間隔（4→3）
 
 // Separate recovery for lines (slower than ripples)
-const LINE_REFOG_ALPHA  = IS_MOBILE ? 3 : 8; // モバイル軽量化: さらに軽く
-const LINE_REFOG_INTERVAL = IS_MOBILE ? 8 : 4; // モバイル軽量化: 8フレーム間隔
+const LINE_REFOG_ALPHA  = IS_MOBILE ? 6 : 8; // Mobile: 6（3→6で適度に）
+const LINE_REFOG_INTERVAL = IS_MOBILE ? 6 : 4; // Mobile: 6フレーム間隔（8→6）
 
 // Line visual sizes
-const LINE_MAIN_WEIGHT  = IS_MOBILE ? 20 : 23.5; // モバイル軽量化: さらに細く
-const LINE_GLOW_WEIGHT  = IS_MOBILE ? 28 : (LINE_MAIN_WEIGHT * 1.5); // モバイル軽量化: グロー削減
+const LINE_MAIN_WEIGHT  = IS_MOBILE ? 22 : 23.5; // Mobile: 22（20→22で太く）
+const LINE_GLOW_WEIGHT  = IS_MOBILE ? 30 : (LINE_MAIN_WEIGHT * 1.5); // Mobile: 30（28→30）
 
 // Point properties (hexagon points) - defined after LINE_MAIN_WEIGHT
 const MAX_POINTS = 12; // Maximum number of points
 const POINT_LIFETIME = 15000; // 15 seconds in milliseconds
-const POINT_RADIUS = LINE_MAIN_WEIGHT * 0.575; // 15% larger than line width (diameter = 115% of line width)
+const POINT_RADIUS = LINE_MAIN_WEIGHT * 0.2875; // 半分のサイズ: 0.575 → 0.2875
 
 // Current drawing line
 let currentLine = null;
@@ -106,11 +106,11 @@ class CollisionRipple {
         if (progress < 0 || progress > 1) return;
         
         // Calculate current ring radius
-        const maxRadius = IS_MOBILE ? 200 : 300;
+        const maxRadius = IS_MOBILE ? 250 : 300;
         const currentRadius = maxRadius * progress;
         
         // Ring thickness
-        const ringThickness = IS_MOBILE ? 15 : 20;
+        const ringThickness = IS_MOBILE ? 18 : 20;
         
         // Draw transparent ring by temporarily erasing fogLayer at ring position only
         fogLayer.push();
@@ -144,6 +144,8 @@ function updateRipples() {
 // p5 preload : 広告画像を読み込み
 // -----------------------------
 function preload() {
+    console.log('preload() called - p5.js is working');
+    
     backgroundImg = loadImage('assets/rust_bg.jpg', () => {
         console.log('Rust background loaded successfully in p5.js');
         // Start fade-in after 1 second delay
@@ -153,19 +155,28 @@ function preload() {
             backgroundFadeStartTime = millis();
         }, 1000); // 1秒後にフェードイン開始
     }, err => {
-        console.error('Rust background load failed, loading fallback');
-        backgroundImg = loadImage('assets/027_01.jpg');
-        setTimeout(() => {
-            backgroundFading = true;
-            backgroundFadeStartTime = millis();
-        }, 1000); // 1秒後にフェードイン開始
+        console.error('Rust background load failed, loading fallback:', err);
+        backgroundImg = loadImage('assets/027_01.jpg', () => {
+            console.log('Fallback background loaded');
+            setTimeout(() => {
+                backgroundFading = true;
+                backgroundFadeStartTime = millis();
+            }, 1000);
+        }, err2 => {
+            console.error('Fallback background also failed:', err2);
+        });
     });
 }
 
 function setup() {
+    console.log('setup() called - p5.js setup is working');
+    console.log('windowWidth:', windowWidth, 'windowHeight:', windowHeight);
+    console.log('IS_MOBILE:', IS_MOBILE);
+    
     // Mobile 向けはピクセル密度を 1 にして負荷を軽減
     if (IS_MOBILE) {
         pixelDensity(1);
+        console.log('Mobile detected - pixelDensity set to 1');
     }
     // Create canvas that fills the window
     createCanvas(windowWidth, windowHeight);
@@ -173,6 +184,7 @@ function setup() {
     console.log('Canvas created:', windowWidth, 'x', windowHeight);
     console.log('Width/Height:', width, 'x', height);
     console.log('p5.js functions available:', typeof background, typeof ellipse, typeof rect);
+    console.log('backgroundImg status:', backgroundImg ? 'loaded' : 'not loaded');
     
     // Create fog overlay
     fogLayer = createGraphics(windowWidth, windowHeight);
@@ -216,6 +228,12 @@ function setup() {
 
 function draw() {
     // Basic function check
+    if (frameCount === 1) {
+        console.log('draw() called - first frame');
+        console.log('ball object:', ball);
+        console.log('fogLayer:', fogLayer);
+        console.log('backgroundImg:', backgroundImg);
+    }
     if (frameCount % 300 === 0) { // Log every 5 seconds
         console.log('Game running, frame:', frameCount);
     }
@@ -589,15 +607,9 @@ function checkHexagonCollisions(prevX, prevY) {
                 consecutiveHits = 1; // Reset consecutive hits for points
                 lastHitLineIndex = -1; // Reset line tracking
                 
-                // Play sound for hexagon hit (treat as a small line) - only if game has started
-                if (gameStarted && typeof playLineSound === 'function') {
-                    // Create a fake line data for sound calculation
-                    let fakeLineData = {
-                        points: [p1, p2],
-                        startTime: pointData.startTime,
-                        id: pointData.id
-                    };
-                    playLineSound(fakeLineData, 1, ball.x, volumeMultiplier);
+                // Play point sound (high notes D6, C6, A5) - only if game has started
+                if (gameStarted && typeof window.playPointSound === 'function') {
+                    window.playPointSound(ball.x, ball.y, volumeMultiplier);
                 }
                 
                 // Create collision ripples for hexagon hit
@@ -968,9 +980,14 @@ function drawLine(lineData, doErase = true) {
         push();
         const alpha = map(fadeProgress, 0, 1, 150, 0); // Fade from 150 to 0
         
-        // モバイル軽量化: グロー効果を無効化
-        if (!IS_MOBILE) {
-            // デスクトップのみ: グロー効果
+        // グロー効果（モバイルは軽量版）
+        if (IS_MOBILE) {
+            // モバイル: 軽量グロー効果
+            stroke(255, 255, 255, alpha * 0.2);
+            strokeWeight(LINE_GLOW_WEIGHT);
+            line(p1.x, p1.y, p2.x, p2.y);
+        } else {
+            // デスクトップ: フルグロー効果
             stroke(255, 255, 255, alpha * 0.3);
             strokeWeight(LINE_GLOW_WEIGHT);
             line(p1.x, p1.y, p2.x, p2.y);
@@ -986,20 +1003,56 @@ function drawLine(lineData, doErase = true) {
 }
 
 function drawHexagonPoint(pointData) {
-    let currentTime = millis();
-    let age = currentTime - pointData.startTime;
-    let alpha = map(age, 0, POINT_LIFETIME, 255, 0);
-    alpha = constrain(alpha, 0, 255);
+    const currentTime = millis();
+    const age = currentTime - pointData.startTime;
+    const fadeProgress = age / POINT_LIFETIME; // 0→1 over 15 seconds
     
-    // Clear fog layer in circular shape (visual appearance)
-    const SCALE = (IS_MOBILE ? PD_SCALE : 1);
-    fogLayer.erase();
-    fogLayer.fill(255);
-    fogLayer.noStroke();
+    const x = pointData.center.x;
+    const y = pointData.center.y;
+    const radius = POINT_RADIUS;
     
-    // Draw circle instead of hexagon for visual appearance
-    fogLayer.ellipse(pointData.center.x, pointData.center.y, POINT_RADIUS * 2);
-    fogLayer.noErase();
+    // One-time fog clearing when point is first drawn (same as lines)
+    const needClear = !pointData.clearDone;
+    if (needClear) {
+        fogLayer.erase(255, LINE_ERASE_ALPHA);
+        try {
+                         fogLayer.stroke(255);
+             fogLayer.strokeWeight(LINE_MAIN_WEIGHT * FOG_CLEAR_MULT * PD_SCALE);
+             fogLayer.noFill();
+             fogLayer.ellipse(x, y, radius); // 半分のサイズ: radius * 2 → radius
+        } finally {
+            fogLayer.noErase();
+        }
+        pointData.clearDone = true;
+    }
+    
+    // Draw visible point that fades out over time (on canvas, same as lines)
+    if (fadeProgress < 1) {
+        push();
+        const alpha = map(fadeProgress, 0, 1, 150, 0); // Fade from 150 to 0 (same as lines)
+        
+         // グロー効果（モバイルは軽量版、線と同じ）
+         if (IS_MOBILE) {
+             // モバイル: 軽量グロー効果
+             stroke(255, 255, 255, alpha * 0.2);
+             strokeWeight(LINE_GLOW_WEIGHT);
+             noFill();
+             ellipse(x, y, radius); // 半分のサイズ: radius * 2 → radius
+         } else {
+             // デスクトップ: フルグロー効果
+             stroke(255, 255, 255, alpha * 0.3);
+             strokeWeight(LINE_GLOW_WEIGHT);
+             noFill();
+             ellipse(x, y, radius); // 半分のサイズ: radius * 2 → radius
+         }
+         
+         // メイン円（全デバイス共通、線と同じ設定）
+         stroke(255, 255, 255, alpha);
+         strokeWeight(LINE_MAIN_WEIGHT * 0.8); // Same as lines
+         noFill();
+         ellipse(x, y, radius); // 半分のサイズ: radius * 2 → radius
+        pop();
+    }
 }
 
 function handleUserInteraction() {
@@ -1076,30 +1129,14 @@ if (typeof window !== 'undefined') {
         lastFreq = freq;
         lastInfoTime = millis();
 
-        let noteEl = document.getElementById('note-display');
-        if (!noteEl) {
-            // Element missing (e.g., older HTML). Create on the fly.
-            const container = document.getElementById('game-container') || document.body;
-            noteEl = document.createElement('div');
-            noteEl.id = 'note-display';
-            noteEl.style.position = 'absolute';
-            noteEl.style.top = '50px';
-            noteEl.style.left = '20px';
-            noteEl.style.color = 'white';
-            noteEl.style.fontSize = '18px';
-            noteEl.style.zIndex = '1000';
-            noteEl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
-            container.appendChild(noteEl);
-        }
-        noteEl.textContent = `Note: ${note} | Len: ${len.toFixed(0)}px | ${freq.toFixed(1)}Hz`;
-
-        console.log('HitInfo updated', note, len.toFixed(1), freq.toFixed(1));
+        // Note display disabled for clean user interface
+        // console.log('HitInfo updated', note, len.toFixed(1), freq.toFixed(1));
     }
     
-    // LUFS info display function (disabled for iPhone performance)
+    // LUFS info display function (disabled for clean UI)
     window.updateLUFSInfo = function(info) {
-        // Display disabled for mobile performance
-        // console.log(`LUFS: ${info.currentLUFS.toFixed(1)}dB | Gain: ${(info.autoGainAdjustment * 100).toFixed(0)}%`);
+        // Display disabled for clean user interface
+        // console.log(`LUFS: ${info.currentLUFS.toFixed(1)}dB | Active: ${info.activeSounds} | Drones: ${info.dronesActive}`);
     }
 }
 

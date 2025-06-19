@@ -324,7 +324,7 @@ function activateMasterVolume() {
                 masterGain.gain.cancelScheduledValues(audioContext.currentTime);
                 masterGain.gain.setValueAtTime(0, audioContext.currentTime);
                 masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.02); // 20ms後に極小値
-                masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 0.07); // 70msで通常ボリュームに（400%相当: 1.58 × 4.0）
+                masterGain.gain.exponentialRampToValueAtTime(3.54, audioContext.currentTime + 0.07); // 70msで通常ボリュームに（-3dB: 5.0 × 0.707 = 3.54）
                 console.log('Master volume: 20ms -> 70ms fade-in started');
             }
         }, 0); // 即座に開始
@@ -355,10 +355,10 @@ function startDrones() {
         droneD3.frequency.value = 146.83; // D3
         droneD3.type = 'sine';
         
-        // D3は30秒かけてゆっくりとフェードイン（メインドローン）
+        // D3は30秒かけてゆっくりとフェードイン（メインドローン）- 音量を半分に調整
         droneGainD3.gain.setValueAtTime(0, now);
         droneGainD3.gain.exponentialRampToValueAtTime(0.0001, now + 1); // 1秒後に極小値
-        droneGainD3.gain.exponentialRampToValueAtTime(0.04, now + 30); // 30秒かけて最終音量（400%ゲイン対応: 0.01 × 4.0）
+        droneGainD3.gain.exponentialRampToValueAtTime(0.005, now + 30); // 30秒かけて最終音量（-12dB: 0.0063 × 0.794 = 0.005）
         
         droneD3.start(now);
         
@@ -374,10 +374,10 @@ function startDrones() {
         droneA3.frequency.value = 220; // A3
         droneA3.type = 'sine';
         
-        // A3は35秒かけてゆっくりとフェードイン（サブドローン、少し弱め）
+        // A3は35秒かけてゆっくりとフェードイン（サブドローン、少し弱め）- 音量を半分に調整
         droneGainA3.gain.setValueAtTime(0, now);
         droneGainA3.gain.exponentialRampToValueAtTime(0.0001, now + 2); // 2秒後に極小値
-        droneGainA3.gain.exponentialRampToValueAtTime(0.0296, now + 35); // 35秒かけて最終音量（400%ゲイン対応: 0.0074 × 4.0）
+        droneGainA3.gain.exponentialRampToValueAtTime(0.0037, now + 35); // 35秒かけて最終音量（-12dB: 0.0047 × 0.794 = 0.0037）
         
         droneA3.start(now);
         
@@ -523,7 +523,7 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
         const freqVolumeMultiplier = 1.0 - (freqProgress * 0.55); // 100% → 45% (55% reduction)
         
         // 最終音量計算（400%ゲイン対応、BUSシステムで音量バランス維持）
-        const baseVolume = 0.124; // ベース音量（400%ゲイン時と同等: 0.493 / 4.0）
+        const baseVolume = 0.392; // ベース音量を+10dB（3.16倍）: 0.124 × 3.16 = 0.392
         const finalVolume = baseVolume * consecutiveMultiplier * ageFactor * freqVolumeMultiplier * volumeMultiplier;
         
         // ドキュメント通りのエンベロープ: A 0.5s / D 0.2s / S 0.3 / R 5s（12秒固定長）
@@ -555,6 +555,9 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
         
         console.log(`Playing: ${displayNoteName} (${randomizedFrequency.toFixed(1)}Hz) - Vol: ${(finalVolume*100).toFixed(1)}% [Active: ${activeSounds.length}/${SYNTH_POOL_SIZE}] -> Shared Effect Bus`);
         
+        // Update LUFS display after playing sound
+        updateLUFSDisplay();
+        
     } catch (error) {
         console.error('Failed to play simple sound:', error);
     }
@@ -568,13 +571,34 @@ function updateDronePanning(ballX) {
     }
 }
 
-// Get current LUFS and dynamics info (simplified for iPhone)
+// Get current LUFS and dynamics info (with real-time measurement)
 function getLUFSInfo() {
+    // Calculate estimated LUFS based on current audio activity
+    const activeSoundCount = activeSounds.length;
+    const droneActive = (droneD3 && droneA3) ? 1 : 0;
+    
+    // Estimate current LUFS based on activity
+    let estimatedLUFS = -70; // Silent baseline
+    
+    if (activeSoundCount > 0 || droneActive) {
+        // Base level from drones (-25 LUFS when active)
+        if (droneActive) estimatedLUFS = -25;
+        
+        // Add contribution from active sounds
+        if (activeSoundCount > 0) {
+            const soundContribution = Math.min(activeSoundCount * 2, 15); // Max +15dB from sounds
+            estimatedLUFS = Math.max(estimatedLUFS, -30) + soundContribution;
+            estimatedLUFS = Math.min(estimatedLUFS, -10); // Cap at -10 LUFS
+        }
+    }
+    
     return {
-        currentLUFS: -14.0, // Fixed value for iPhone performance
+        currentLUFS: estimatedLUFS,
         targetLUFS: -14.0,
-        autoGainAdjustment: 4.0, // Fixed 400% (same as before)
-        limiterReduction: 0
+        autoGainAdjustment: 3.54, // Current master gain (-3dB from 5.0)
+        limiterReduction: 0,
+        activeSounds: activeSoundCount,
+        dronesActive: droneActive
     };
 }
 
@@ -589,6 +613,109 @@ function updateLUFSDisplay() {
     if (typeof window !== 'undefined' && typeof window.updateLUFSInfo === 'function') {
         const info = getLUFSInfo();
         window.updateLUFSInfo(info);
+    }
+}
+
+// Play point sound - always one of the top 3 highest notes (D6, C6, A5)
+function playPointSound(ballX, ballY, volumeMultiplier = 1.0) {
+    if (!isAudioReady || !window.simpleAudioContext || !effectBus) {
+        console.log('Audio system not ready for point sound');
+        return;
+    }
+    
+    try {
+        const audioContext = window.simpleAudioContext;
+        
+        // Update effect bus based on ball position
+        updateEffectBus(ballX, ballY);
+        
+        // Select one of the top 3 highest notes randomly
+        const topNoteIndices = [0, 1, 2]; // D6, C6, A5
+        const randomIndex = topNoteIndices[Math.floor(Math.random() * 3)];
+        const frequency = simpleScale[randomIndex];
+        const noteName = simpleNotes[randomIndex];
+        
+        // Check polyphonic limit (32ボイス制限)
+        if (activeSounds.length >= SYNTH_POOL_SIZE) {
+            // Stop oldest sound
+            const oldest = activeSounds.shift();
+            if (oldest && oldest.osc) {
+                try {
+                    oldest.osc.stop();
+                } catch (e) {
+                    // Ignore if already stopped
+                }
+            }
+            console.log(`Polyphonic limit reached (${SYNTH_POOL_SIZE}), stopped oldest sound`);
+        }
+        
+        // Display note info
+        if (typeof window !== 'undefined' && typeof window.updateHitInfo === 'function') {
+            window.updateHitInfo(noteName, 50, frequency); // Fixed length for points
+        }
+        
+        // Create oscillator with panning ONLY - エフェクトは共有バスを使用
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const panner = audioContext.createStereoPanner();
+        
+        // Set panning based on ball position
+        if (ballX !== undefined && window.innerWidth) {
+            const panValue = (ballX / window.innerWidth) * 2 - 1; // -1 to 1
+            panner.pan.value = panValue;
+        }
+        
+        // ROUTING: osc -> gain -> panner -> effectBus（個別パンニング + 共有エフェクト）
+        osc.connect(gain);
+        gain.connect(panner);
+        panner.connect(effectBus); // 共有エフェクトバスに送信
+        
+        // ±3セントランダマイズ（すべての音に適用）
+        const cents = (Math.random() * 6) - 3; // -3 to +3 cents
+        const detuneFactor = Math.pow(2, cents / 1200); // セント→周波数比
+        const randomizedFrequency = frequency * detuneFactor;
+        
+        osc.frequency.value = randomizedFrequency;
+        osc.type = 'sine';
+        
+        // Point sound volume - slightly higher than normal sounds
+        const baseVolume = 0.45; // Higher than normal sounds (0.392)
+        const finalVolume = baseVolume * volumeMultiplier;
+        
+        // Point sound envelope: Quick attack, short sustain, quick release
+        const now = audioContext.currentTime;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(finalVolume, now + 0.05);      // Quick attack: 50ms
+        gain.gain.linearRampToValueAtTime(finalVolume * 0.7, now + 0.1); // Quick decay: 50ms
+        gain.gain.setValueAtTime(finalVolume * 0.7, now + 0.2);          // Short sustain: 100ms
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);        // Quick release: 1.3s
+        
+        osc.start(now);
+        osc.stop(now + 1.5); // 1.5秒の短い音
+        
+        // Add to active sounds for polyphonic management
+        const soundInfo = {
+            osc: osc,
+            startTime: now,
+            frequency: frequency
+        };
+        activeSounds.push(soundInfo);
+        
+        // Auto-remove from activeSounds when sound ends
+        setTimeout(() => {
+            const index = activeSounds.indexOf(soundInfo);
+            if (index > -1) {
+                activeSounds.splice(index, 1);
+            }
+        }, 1500); // 1.5 seconds
+        
+        console.log(`Point Sound: ${noteName} (${randomizedFrequency.toFixed(1)}Hz) - Vol: ${(finalVolume*100).toFixed(1)}% [Active: ${activeSounds.length}/${SYNTH_POOL_SIZE}]`);
+        
+        // Update LUFS display after playing sound
+        updateLUFSDisplay();
+        
+    } catch (error) {
+        console.error('Failed to play point sound:', error);
     }
 }
 
@@ -642,6 +769,7 @@ function playStartSound() {
 if (typeof window !== 'undefined') {
     window.initSimpleAudio = initSimpleAudio;
     window.playSimpleSound = playSimpleSound;
+    window.playPointSound = playPointSound;
     window.updateDronePanning = updateDronePanning;
     window.activateMasterVolume = activateMasterVolume;
     window.playStartSound = playStartSound;
