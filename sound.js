@@ -14,18 +14,26 @@ const SYNTH_POOL_SIZE = 32;
 let lastFreqTimes = {};
 
 // -----------------------------
-//  新しいプレイアブルスケール：B3, C3, E3, A2, G3（高音→低音順）
+//  最新のプレイアブルスケール：13音階（高音→低音順）+ A4追加
 // -----------------------------
 const playableScale = [
-    246.94,  // B3（最高音）
-    130.81,  // C3
+    1174.66, // D6 (最高音・短い線)
+    1046.50, // C6
+    880.00,  // A5
+    440.00,  // A4 (追加・スタート音)
+    392.00,  // G4
+    329.63,  // E4
+    293.66,  // D4
+    246.94,  // B3
+    196.00,  // G3
     164.81,  // E3
+    130.81,  // C3
     110.00,  // A2
-    196.00   // G3（最低音）
+    73.42    // D2 (最低音・長い線)
 ];
 
 const playableNoteNames = [
-    "B3", "C3", "E3", "A2", "G3"
+    "D6", "C6", "A5", "A4", "G4", "E4", "D4", "B3", "G3", "E3", "C3", "A2", "D2"
 ];
 
 // Backward compatibility aliases（既存コードのため）
@@ -434,7 +442,76 @@ function updateDronePan(ballX) {
     }
 }
 
+// Play start sound (A4 = 440Hz) using existing synth pool
+function playStartSound() {
+    if (!audioInitialized) {
+        console.log('Audio not initialized for start sound');
+        return;
+    }
+    
+    // Additional safety check for Tone.js context
+    if (Tone.context.state !== 'running') {
+        console.log('Tone.js context not running, skipping start sound');
+        return;
+    }
+    
+    try {
+        // Create a fake line to use existing playLineSound function
+        // Find closest frequency to A4 (440Hz) in our playable scale
+        let targetFreq = 440.0; // A4
+        let closestIndex = 0;
+        let minDiff = Math.abs(playableScale[0] - targetFreq);
+        
+        for (let i = 1; i < playableScale.length; i++) {
+            const diff = Math.abs(playableScale[i] - targetFreq);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIndex = i;
+            }
+        }
+        
+        // Calculate line length that would produce this frequency
+        const maxLength = Math.hypot(width || 800, height || 600) * 0.25;
+        const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+        const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 1.0 : maxLength * 0.67;
+        
+        // Reverse the mapping: we want the line length that produces closestIndex
+        const normalized = closestIndex / (playableScale.length - 1); // 0〜1
+        const inverted = 1 - normalized; // Invert because short lines = high notes
+        const curved = Math.pow(inverted, 1/0.6); // Reverse the curve
+        const fakeLineLength = curved * effectiveMax;
+        
+        // Create fake line object
+        const fakeLine = {
+            points: [
+                {x: 0, y: 0},
+                {x: fakeLineLength, y: 0}
+            ],
+            startTime: millis()
+        };
+        
+                 // Use existing playLineSound with center position
+         const centerX = (width || 800) / 2;
+         playLineSound(fakeLine, 1, centerX);
+         
+         // Boost start sound volume temporarily by adjusting master gain
+         if (typeof Tone !== 'undefined' && Tone.Destination && Tone.Destination.volume) {
+             const originalVolume = Tone.Destination.volume.value;
+             Tone.Destination.volume.value = originalVolume + 12; // +12dB boost for start sound
+             setTimeout(() => {
+                 Tone.Destination.volume.value = originalVolume; // Restore original volume
+             }, 3000); // 3秒後に元に戻す
+         }
+        
+        console.log(`Start sound: using closest note ${playableNoteNames[closestIndex]} (${playableScale[closestIndex].toFixed(1)}Hz) for A4 request`);
+        
+    } catch (error) {
+        console.error('Failed to play start sound:', error);
+    }
+}
+
 // Export for sketch.js
 if (typeof window !== 'undefined') {
     window.updateDronePan = updateDronePan;
+    window.playStartSound = playStartSound;
 } 

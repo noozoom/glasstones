@@ -28,22 +28,24 @@ let activeSounds = [];
 let lastPlayTime = {}; // Track last play time for each frequency
 const MIN_REPLAY_INTERVAL = 30; // 30ms minimum between same frequency replays (より短く)
 
-// 最新の音階 + G3追加 (短い線ほど高音、長い線ほど低音)
+// 最新の音階 + A4追加 + D4/C4追加 (短い線ほど高音、長い線ほど低音)
 const simpleScale = [
     1174.66, // D6 (最高音・短い線)
     1046.50, // C6
-    880.00,  // A5
+    880.00,  // A5 (スタート音)
+    440.00,  // A4
     392.00,  // G4
     329.63,  // E4
     293.66,  // D4
+    261.63,  // C4 (追加)
     246.94,  // B3
-    196.00,  // G3 (追加)
+    196.00,  // G3
     164.81,  // E3
     130.81,  // C3
     110.00,  // A2
     73.42    // D2 (最低音・長い線)
 ];
-const simpleNotes = ["D6", "C6", "A5", "G4", "E4", "D4", "B3", "G3", "E3", "C3", "A2", "D2"];
+const simpleNotes = ["D6", "C6", "A5", "A4", "G4", "E4", "D4", "C4", "B3", "G3", "E3", "C3", "A2", "D2"];
 
 // LUFS calculation (simplified ITU-R BS.1770 implementation)
 function calculateLUFS(audioData) {
@@ -112,43 +114,43 @@ function initSimpleAudio() {
             audioContext.resume().then(() => {
                 console.log('Audio context resumed');
                 isAudioReady = true;
-                // 500ms後にマスターボリュームをゆっくりフェードイン（プツ音防止）
+                // 30ms後にマスターボリュームを素早くフェードイン（スタート音対応）
                 setTimeout(() => {
                     if (masterGain) {
-                        // 現在の値から安全にフェードイン（急激な変化を避ける）
+                        // 現在の値から素早くフェードイン
                         masterGain.gain.cancelScheduledValues(audioContext.currentTime);
                         masterGain.gain.setValueAtTime(0, audioContext.currentTime);
-                        masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1); // 100ms後に極小値
-                        masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 3.1); // 3秒かけてゆっくりフェードイン（400%相当: 1.58 × 4.0）
-                        console.log('Master volume fading in over 3 seconds with safe exponential ramp');
+                        masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.03); // 30ms後に極小値
+                        masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 0.08); // 80msで通常ボリュームに（400%相当: 1.58 × 4.0）
+                        console.log('Master volume fading in over 80ms for quick start sound response');
                         // iPhone performance: Skip heavy LUFS monitoring
                         // setInterval(updateLUFSMeasurement, 200);
                     }
-                }, 500);
-                // 4秒遅延でドローンを開始（マスターフェードイン完了後）
+                }, 30);
+                // 1秒遅延でドローンを開始（マスターフェードイン完了後）
                 setTimeout(() => {
                     startDrones();
-                }, 4000);
+                }, 1000);
             });
         } else {
             isAudioReady = true;
-            // 500ms後にマスターボリュームをゆっくりフェードイン（プツ音防止）
+            // 30ms後にマスターボリュームを素早くフェードイン（スタート音対応）
             setTimeout(() => {
                 if (masterGain) {
-                    // 現在の値から安全にフェードイン（急激な変化を避ける）
+                    // 現在の値から素早くフェードイン
                     masterGain.gain.cancelScheduledValues(audioContext.currentTime);
                     masterGain.gain.setValueAtTime(0, audioContext.currentTime);
-                    masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1); // 100ms後に極小値
-                    masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 3.1); // 3秒かけてゆっくりフェードイン（400%相当: 1.58 × 4.0）
-                    console.log('Master volume fading in over 3 seconds with safe exponential ramp');
+                    masterGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.03); // 30ms後に極小値
+                    masterGain.gain.exponentialRampToValueAtTime(6.32, audioContext.currentTime + 0.08); // 80msで通常ボリュームに（400%相当: 1.58 × 4.0）
+                    console.log('Master volume fading in over 80ms for quick start sound response');
                     // iPhone performance: Skip heavy LUFS monitoring
                     // setInterval(updateLUFSMeasurement, 200);
                 }
-            }, 500);
-            // 4秒遅延でドローンを開始（マスターフェードイン完了後）
+            }, 30);
+            // 1秒遅延でドローンを開始（マスターフェードイン完了後）
             setTimeout(() => {
                 startDrones();
-            }, 4000);
+            }, 1000);
         }
         
         window.simpleAudioContext = audioContext;
@@ -462,10 +464,56 @@ function updateLUFSDisplay() {
     }
 }
 
+// Play start sound (D4 = 293.66Hz) using playSimpleSound - immediate trigger
+function playStartSound() {
+    if (!isAudioReady || !window.simpleAudioContext) {
+        console.log('Audio not ready for start sound');
+        return;
+    }
+    
+    try {
+        // D4は音階の6番目（index 6）にある
+        const targetFreq = 293.66; // D4
+        const targetIndex = 6; // D4のインデックス
+        
+        // 短い線でD4が出るような線の長さを計算
+        const maxLength = Math.hypot(window.innerWidth, window.innerHeight) * 0.25;
+        const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+        const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 3.0 : maxLength * 1.34;
+        
+        // D4のインデックス（6）から線の長さを逆算
+        const normalizedIndex = targetIndex / (simpleScale.length - 1); // 0〜1
+        
+        // 逆カーブ計算
+        let curved;
+        if (normalizedIndex < 0.67) {
+            curved = Math.pow(normalizedIndex / 0.67, 1/1.5) * 0.67;
+        } else {
+            curved = 0.67 + Math.pow((normalizedIndex - 0.67) / 0.33, 2) * 0.33;
+        }
+        const normalized = 1 - curved; // 短い線ほど高音なので反転
+        const fakeLineLength = normalized * effectiveMax;
+        
+        // 画面中央でプレイアブルシンセを即座に使用（遅延なし）
+        const centerX = window.innerWidth ? window.innerWidth / 2 : 400;
+        
+        // 即座にトリガー - マスターフェーダーが立ち上がるのを待たない
+        setTimeout(() => {
+            playSimpleSound(fakeLineLength, centerX, 1, 0.65, 0); // 65%音量でスタート音（プレイアブル通常音量の65%）
+        }, 0); // 遅延なし
+        
+        console.log(`Start sound: D4 (${targetFreq}Hz) triggered immediately - master fader will handle volume`);
+        
+    } catch (error) {
+        console.error('Failed to play start sound:', error);
+    }
+}
+
 // Export for global access
 if (typeof window !== 'undefined') {
     window.initSimpleAudio = initSimpleAudio;
     window.playSimpleSound = playSimpleSound;
+    window.playStartSound = playStartSound;
     window.updateDronePanning = updateDronePanning;
     window.getLUFSInfo = getLUFSInfo;
     window.setTargetLUFS = setTargetLUFS;

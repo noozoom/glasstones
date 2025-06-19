@@ -227,8 +227,8 @@ function draw() {
     }
 
     // ---------- フォグレイヤーの徐々に再曇り処理 ----------
-    // 統一された霧回復（リップル用の早い回復速度）
-    if (gameStarted && frameCount % REFOG_INTERVAL === 0) {
+    // 統一された霧回復（リップル用の早い回復速度）- スタート前でも動作
+    if (frameCount % REFOG_INTERVAL === 0) {
         fogLayer.push();
         fogLayer.blendMode(BLEND);
         fogLayer.fill(230, 230, 230, REFOG_ALPHA);
@@ -377,7 +377,7 @@ function drawBall() {
 }
 
 function drawBallTrail() {
-    // Draw comet-like trail effect
+    // Draw comet-like trail effect - ALWAYS active (not limited by gameStarted)
     push();
     
     const trailLength = ball.trail.length;
@@ -425,7 +425,7 @@ function drawBallTrail() {
             }
         }
         
-        // Draw trail point with fog clearing
+        // Draw trail point with fog clearing - ALWAYS clear fog regardless of game state
         fogLayer.erase(255, alpha);
         fogLayer.fill(255);
         fogLayer.noStroke();
@@ -988,16 +988,31 @@ function playRandomWallSound(ballX, ballY) {
     }
     
     if (typeof window.playSimpleSound === 'function') {
-        // プレイアブルスケールからランダムに音を選択
-        // 画面の対角線の10-30%のランダムな長さをシミュレート
-        const minLength = Math.hypot(width, height) * 0.1;
-        const maxLength = Math.hypot(width, height) * 0.3;
-        const randomLength = minLength + Math.random() * (maxLength - minLength);
+        // 高音の確率を30%減らすために、線の長さ分布を調整
+        // 通常: 10-30%の範囲で均等分布
+        // 調整後: 高音域（短い線）の確率を30%減らし、中低音域を増やす
         
-        // 壁衝突音は音量を少し下げる
-        const wallVolumeMultiplier = 0.6;
+        const minLength = Math.hypot(width, height) * 0.1;  // 最短（高音）
+        const maxLength = Math.hypot(width, height) * 0.3;  // 最長（低音）
+        const midLength = (minLength + maxLength) / 2;       // 中間点
         
-        console.log('Wall collision - playing random sound with length:', randomLength);
+        let randomLength;
+        const roll = Math.random();
+        
+        if (roll < 0.3) {
+            // 30%の確率で高音域（短い線: minLength〜midLength）
+            // 元々は50%だったので、30%減少
+            randomLength = minLength + Math.random() * (midLength - minLength);
+        } else {
+            // 70%の確率で中低音域（長い線: midLength〜maxLength）
+            // 元々は50%だったので、20%増加
+            randomLength = midLength + Math.random() * (maxLength - midLength);
+        }
+        
+        // 壁衝突音は音量を65%に設定
+        const wallVolumeMultiplier = 0.65;
+        
+        console.log('Wall collision - playing sound with adjusted length:', randomLength.toFixed(1), 'volume:', wallVolumeMultiplier);
         window.playSimpleSound(randomLength, ballX, 1, wallVolumeMultiplier, 0);
     }
 }

@@ -207,6 +207,13 @@
               touchToStart.style.display = 'none';
               console.log('Touch to start hidden');
               
+              // Play start sound (A4) as game start signal after 100ms
+              setTimeout(() => {
+                if (typeof window.playStartSound === 'function') {
+                  window.playStartSound();
+                }
+              }, 100); // 100ms後にスタート音（押してすぐ）
+              
               // Start the game properly
               if (typeof startGame === 'function') {
                 startGame();
