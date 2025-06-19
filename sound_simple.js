@@ -23,7 +23,9 @@ let currentLUFS = -70; // Current measured LUFS
 let autoGainAdjustment = 1.0; // Automatic gain adjustment factor
 
 // Polyphonic voice management (32 voices like original)
-const SYNTH_POOL_SIZE = 32;
+// Mobile optimized polyphonic limit
+const IS_MOBILE_DEVICE = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+const SYNTH_POOL_SIZE = IS_MOBILE_DEVICE ? 16 : 32; // Mobile: 16 voices, Desktop: 32 voices
 let activeSounds = [];
 let lastPlayTime = {}; // Track last play time for each frequency
 const MIN_REPLAY_INTERVAL = 30; // 30ms minimum between same frequency replays (より短く)
@@ -226,8 +228,8 @@ function startDrones() {
     }
 }
 
-// Play simple sound with panning
-function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplier = 1.0, lineAge = 0) {
+// Play simple sound with panning and vertical effects
+function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMultiplier = 1.0, lineAge = 0) {
     if (!isAudioReady || !window.simpleAudioContext) {
         console.log('Audio not ready, trying to initialize...');
         initSimpleAudio();
@@ -327,9 +329,11 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
         const wetGain = audioContext.createGain();
         const dryGain = audioContext.createGain();
         
-        // Create impulse response for reverb (15秒のリバーブ)
+        // Create impulse response for reverb (mobile optimized)
         if (!convolver.buffer) {
-            const length = audioContext.sampleRate * 15; // 15 second reverb (元の設定に戻す)
+            const IS_MOBILE_REVERB = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+            const reverbLength = IS_MOBILE_REVERB ? 8 : 15; // Mobile: 8s, Desktop: 15s
+            const length = audioContext.sampleRate * reverbLength;
             const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
             for (let channel = 0; channel < 2; channel++) {
                 const channelData = impulse.getChannelData(channel);
@@ -338,6 +342,7 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
                 }
             }
             convolver.buffer = impulse;
+            console.log(`Reverb initialized: ${reverbLength}s (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'})`);
         }
         
         // Set panning based on ball position
@@ -346,18 +351,98 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
             panner.pan.value = panValue;
         }
         
-        // Audio routing: osc -> gain -> panner -> [dry/wet split] -> destination
+        // Create delay node for vertical position control
+        const delayNode = audioContext.createDelay(1.0); // Max 1 second delay
+        const delayGain = audioContext.createGain();
+        const delayFeedback = audioContext.createGain();
+        
+        // Set delay based on vertical position (ballY) - optimized for mobile performance
+        if (ballY !== undefined && window.innerHeight) {
+            const verticalRatio = ballY / window.innerHeight; // 0 (top) to 1 (bottom)
+            
+            // Mobile detection for performance optimization
+            const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+            
+            if (IS_MOBILE_AUDIO) {
+                // Mobile: lighter delay settings
+                const minDelay = 0.008;  // 8ms
+                const maxDelay = 0.25;   // 250ms (much lighter for mobile)
+                const delayTime = minDelay + (verticalRatio * (maxDelay - minDelay));
+                
+                delayNode.delayTime.setValueAtTime(delayTime, audioContext.currentTime);
+                
+                const delayMix = 0.06 + (verticalRatio * 0.24); // 6% to 30% (lighter mix)
+                delayGain.gain.setValueAtTime(delayMix, audioContext.currentTime);
+                
+                const feedbackAmount = 0.1 + (verticalRatio * 0.3); // 10% to 40% (lighter feedback)
+                delayFeedback.gain.setValueAtTime(feedbackAmount, audioContext.currentTime);
+                
+                console.log(`Mobile delay: Y=${ballY}px (${(verticalRatio * 100).toFixed(1)}%) - Delay: ${(delayTime * 1000).toFixed(0)}ms, Mix: ${(delayMix * 100).toFixed(0)}%, Feedback: ${(feedbackAmount * 100).toFixed(0)}%`);
+            } else {
+                // Desktop: deeper delay settings
+                const minDelay = 0.01;  // 10ms
+                const maxDelay = 0.4;   // 400ms (reduced from 800ms)
+                const delayTime = minDelay + (verticalRatio * (maxDelay - minDelay));
+                
+                delayNode.delayTime.setValueAtTime(delayTime, audioContext.currentTime);
+                
+                const delayMix = 0.08 + (verticalRatio * 0.32); // 8% to 40% (reduced from 60%)
+                delayGain.gain.setValueAtTime(delayMix, audioContext.currentTime);
+                
+                const feedbackAmount = 0.15 + (verticalRatio * 0.35); // 15% to 50% (reduced from 70%)
+                delayFeedback.gain.setValueAtTime(feedbackAmount, audioContext.currentTime);
+                
+                console.log(`Desktop delay: Y=${ballY}px (${(verticalRatio * 100).toFixed(1)}%) - Delay: ${(delayTime * 1000).toFixed(0)}ms, Mix: ${(delayMix * 100).toFixed(0)}%, Feedback: ${(feedbackAmount * 100).toFixed(0)}%`);
+            }
+        } else {
+            // Default values if ballY is not provided (middle position)
+            const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+            if (IS_MOBILE_AUDIO) {
+                delayNode.delayTime.setValueAtTime(0.125, audioContext.currentTime); // 125ms
+                delayGain.gain.setValueAtTime(0.18, audioContext.currentTime); // 18%
+                delayFeedback.gain.setValueAtTime(0.25, audioContext.currentTime); // 25%
+            } else {
+                delayNode.delayTime.setValueAtTime(0.2, audioContext.currentTime); // 200ms
+                delayGain.gain.setValueAtTime(0.24, audioContext.currentTime); // 24%
+                delayFeedback.gain.setValueAtTime(0.32, audioContext.currentTime); // 32%
+            }
+        }
+        
+        // Setup delay feedback loop
+        delayNode.connect(delayFeedback);
+        delayFeedback.connect(delayNode);
+        
+        // Audio routing: osc -> gain -> panner -> [dry + delay] -> [chorus] -> reverb
         osc.connect(gain);
         gain.connect(panner);
         
-        // コーラス効果を追加
+        // Split signal for delay processing
+        const delayInput = audioContext.createGain();
+        panner.connect(delayInput);
+        delayInput.connect(delayNode);
+        delayNode.connect(delayGain);
+        
+        // コーラス効果を追加（上下位置で周期を変化）
         const chorusGain = audioContext.createGain();
         const chorusDelay = audioContext.createDelay(0.1);
         const chorusLFO = audioContext.createOscillator();
         const chorusLFOGain = audioContext.createGain();
         
-        // コーラス設定 (3秒周期のゆっくりしたモジュレーション)
-        chorusLFO.frequency.value = 0.33; // 3-second period (1/3 Hz)
+        // コーラス設定（上下位置による周期変化: 上部1秒周期、下部5秒周期）
+        let chorusFrequency = 0.33; // デフォルト3秒周期 (1/3 Hz)
+        if (ballY !== undefined && window.innerHeight) {
+            const verticalRatio = ballY / window.innerHeight; // 0 (top) to 1 (bottom)
+            
+            // Upper area: fast chorus (1 second period = 1 Hz)
+            // Lower area: slow chorus (5 second period = 0.2 Hz)
+            const minFreq = 1.0;   // 1 Hz (1 second period) - upper
+            const maxFreq = 0.2;   // 0.2 Hz (5 second period) - lower
+            chorusFrequency = minFreq + (verticalRatio * (maxFreq - minFreq));
+            
+            console.log(`Chorus frequency: Y=${ballY}px (${(verticalRatio * 100).toFixed(1)}%) - Period: ${(1/chorusFrequency).toFixed(1)}s (${chorusFrequency.toFixed(2)}Hz)`);
+        }
+        
+        chorusLFO.frequency.value = chorusFrequency;
         chorusLFOGain.gain.value = 0.0035; // 3.5ms delay modulation
         chorusDelay.delayTime.value = 0.0035; // 3.5ms base delay
         
@@ -365,14 +450,15 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
         chorusLFOGain.connect(chorusDelay.delayTime);
         chorusLFO.start();
         
-        // Audio routing: panner -> [dry + chorus] -> reverb -> destination
+        // Audio routing: panner -> [dry + delay + chorus] -> reverb -> destination
         panner.connect(dryGain);
         panner.connect(chorusDelay);
         chorusDelay.connect(chorusGain);
         
-        // Mix dry and chorus signals
+        // Mix dry, delay, and chorus signals
         const preFXGain = audioContext.createGain();
         dryGain.connect(preFXGain);
+        delayGain.connect(preFXGain);  // Add delay to the mix
         chorusGain.connect(preFXGain);
         
         // Send mixed signal to reverb
@@ -380,9 +466,19 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
         convolver.connect(wetGain);
         wetGain.connect(masterGain); // マスターゲインに接続
         
-        // Gain settings
-        dryGain.gain.value = 0.7; // 70% dry
-        chorusGain.gain.value = 0.3; // 30% chorus
+        // Gain settings (optimized for mobile performance)
+        const IS_MOBILE_AUDIO_GAIN = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+        if (IS_MOBILE_AUDIO_GAIN) {
+            // Mobile: lighter processing
+            dryGain.gain.value = 0.55; // 55% dry (more dry signal for mobile)
+            chorusGain.gain.value = 0.25; // 25% chorus
+            // delayGain is set dynamically: Mobile 6-30%
+        } else {
+            // Desktop: richer processing
+            dryGain.gain.value = 0.5; // 50% dry
+            chorusGain.gain.value = 0.22; // 22% chorus
+            // delayGain is set dynamically: Desktop 8-40%
+        }
         wetGain.gain.value = 1.0; // 100% wet (全信号をリバーブに送る)
         
         // ±3セントランダマイズ（すべての音に適用）
@@ -514,7 +610,8 @@ function playStartSound() {
         
         // 即座にトリガー - マスターフェーダーが立ち上がるのを待たない
         setTimeout(() => {
-            playSimpleSound(fakeLineLength, centerX, 1, 0.65, 0); // 65%音量でスタート音（プレイアブル通常音量の65%）
+            const centerY = window.innerHeight / 2; // Screen center Y
+        playSimpleSound(fakeLineLength, centerX, centerY, 1, 0.65, 0); // 65%音量でスタート音（プレイアブル通常音量の65%）
         }, 0); // 遅延なし
         
         console.log(`Start sound: D4 (${targetFreq}Hz) triggered immediately - master fader will handle volume`);

@@ -491,8 +491,8 @@ function checkLineCollisions(prevX, prevY) {
                     const lineLength = calculateLineLengthFromPoints(lineData.points);
                     const currentTime = millis();
                     const lineAge = currentTime - lineData.startTime;
-                    console.log('Playing simple sound for line', i, 'length:', lineLength, 'ballX:', ball.x, 'consecutiveHits:', consecutiveHits);
-                    window.playSimpleSound(lineLength, ball.x, consecutiveHits, volumeMultiplier, lineAge);
+                    console.log('Playing simple sound for line', i, 'length:', lineLength, 'ball:', ball.x, ball.y, 'consecutiveHits:', consecutiveHits);
+                    window.playSimpleSound(lineLength, ball.x, ball.y, consecutiveHits, volumeMultiplier, lineAge);
                 } else if (typeof playLineSound === 'function') {
                     console.log('Calling playLineSound for line', i, 'with', lineData.points.length, 'points');
                     playLineSound(lineData, consecutiveHits, ball.x, volumeMultiplier);  // Pass volumeMultiplier
@@ -1013,7 +1013,7 @@ function playRandomWallSound(ballX, ballY) {
         const wallVolumeMultiplier = 0.65;
         
         console.log('Wall collision - playing sound with adjusted length:', randomLength.toFixed(1), 'volume:', wallVolumeMultiplier);
-        window.playSimpleSound(randomLength, ballX, 1, wallVolumeMultiplier, 0);
+        window.playSimpleSound(randomLength, ballX, ballY, 1, wallVolumeMultiplier, 0);
     }
 }
 
