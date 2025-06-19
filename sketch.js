@@ -147,9 +147,11 @@ function updateRipples() {
 // -----------------------------
 function preload() {
     console.log('preload() called - p5.js is working');
+    console.log('Loading background image from: assets/rust_bg.jpg');
     
     backgroundImg = loadImage('assets/rust_bg.jpg', () => {
-        console.log('Rust background loaded successfully in p5.js');
+        console.log('✅ Rust background loaded successfully in p5.js');
+        console.log('Background image dimensions:', backgroundImg.width, 'x', backgroundImg.height);
         // Start fade-in after 1 second delay
         setTimeout(() => {
             console.log('Starting p5.js background smooth fade-in (2s duration)...');
@@ -157,15 +159,17 @@ function preload() {
             backgroundFadeStartTime = millis();
         }, 1000); // 1秒後にフェードイン開始
     }, err => {
-        console.error('Rust background load failed, loading fallback:', err);
+        console.error('❌ Rust background load failed, loading fallback:', err);
         backgroundImg = loadImage('assets/027_01.jpg', () => {
-            console.log('Fallback background loaded');
+            console.log('✅ Fallback background loaded');
+            console.log('Fallback image dimensions:', backgroundImg.width, 'x', backgroundImg.height);
             setTimeout(() => {
                 backgroundFading = true;
                 backgroundFadeStartTime = millis();
             }, 1000);
         }, err2 => {
-            console.error('Fallback background also failed:', err2);
+            console.error('❌ Fallback background also failed:', err2);
+            console.error('Both background images failed to load - will use solid color');
         });
     });
 }
@@ -272,10 +276,25 @@ function draw() {
         let offsetX = (width - scaledWidth) / 2;
         let offsetY = (height - scaledHeight) / 2;
         
+        // Debug log every 300 frames (5 seconds)
+        if (frameCount % 300 === 0) {
+            console.log('🖼️ Drawing background:', {
+                alpha: backgroundAlpha,
+                scale: scale,
+                size: scaledWidth + 'x' + scaledHeight,
+                offset: offsetX + ',' + offsetY
+            });
+        }
+        
         // Apply alpha for smooth fade-in
         tint(255, backgroundAlpha);
         image(backgroundImg, offsetX, offsetY, scaledWidth, scaledHeight);
         noTint(); // Reset tint for other elements
+    } else if (frameCount % 300 === 0) {
+        console.log('❌ Background not drawn:', {
+            backgroundImg: !!backgroundImg,
+            backgroundAlpha: backgroundAlpha
+        });
     }
 
     // ---------- フォグレイヤーの徐々に再曇り処理 ----------
