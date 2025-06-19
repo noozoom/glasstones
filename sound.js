@@ -55,6 +55,16 @@ const mixolydianNoteNames = playableNoteNames;
 let reverbNode = null;
 let chorusNode = null;
 
+// VIBRATO SYSTEM - iPhone振ってビブラート
+let vibratoLFO = null;
+let vibratoIntensity = 0; // 0-1, 振りの強さに応じて変化
+let targetVibratoIntensity = 0; // 目標値（振りの強さ）
+let lastAcceleration = { x: 0, y: 0, z: 0 };
+let accelerationHistory = [];
+const VIBRATO_HISTORY_SIZE = 10; // 10フレーム分の履歴
+const VIBRATO_DECAY_RATE = 0.985; // 減衰率（3秒でゆっくり減衰）
+let isVibratoEnabled = false;
+
 // Initialize audio system
 function initializeAudio() {
     if (audioInitialized) return;
@@ -82,6 +92,13 @@ function initializeAudio() {
                     // Chain: Chorus -> Reverb -> Destination
                     chorusNode.connect(reverbNode);
                     
+                    // VIBRATO SYSTEM SETUP
+                    vibratoLFO = new Tone.LFO({
+                        frequency: 2.0, // 2.0Hz ビブラート（1秒間に2回）
+                        type: "sine",
+                        amplitude: 0 // 初期は無効
+                    }).start();
+                    
                     // generate impulse asynchronously
                     if (typeof reverbNode.generate === 'function') {
                         reverbNode.generate().then(() => {
@@ -91,8 +108,12 @@ function initializeAudio() {
 
                     setupDrone();
                     setupSynthPool();
+                    
+                    // Connect vibrato to all synths after everything is set up
+                    connectVibratoToSynths();
+                    
                     audioInitialized = true;
-                    console.log('Audio fully initialized');
+                    console.log('Audio fully initialized with vibrato');
                 } catch (setupError) {
                     console.error('Failed to setup audio components:', setupError);
                 }
@@ -191,6 +212,9 @@ function setupSynthPool() {
         panner.connect(chorusNode);
         synth.connect(panner);
         
+        // Connect vibrato LFO to synth frequency (will be connected later when available)
+        synth.vibratoConnected = false;
+        
         synthPool.push({
             synth: synth,
             panner: panner,
@@ -199,6 +223,24 @@ function setupSynthPool() {
             baseFreq: null
         });
     }
+}
+
+// Connect vibrato LFO to all synths
+function connectVibratoToSynths() {
+    if (!vibratoLFO || !synthPool) return;
+    
+    synthPool.forEach(item => {
+        if (item.synth && !item.synth.vibratoConnected) {
+            try {
+                vibratoLFO.connect(item.synth.oscillator.frequency);
+                item.synth.vibratoConnected = true;
+            } catch (error) {
+                console.warn('Failed to connect vibrato to synth:', error);
+            }
+        }
+    });
+    
+    console.log('Vibrato LFO connected to all synths');
 }
 
 // Get frequency based on line length
@@ -513,8 +555,100 @@ function playStartSound() {
     }
 }
 
+// VIBRATO CONTROL FUNCTIONS
+function initVibratoControl() {
+    if (!isTouchDevice()) {
+        console.log('Vibrato control: Desktop device, skipping motion sensor setup');
+        return;
+    }
+    
+    console.log('Initializing iPhone vibrato control...');
+    
+    // DeviceMotionAPIの許可をリクエスト（iOS 13+で必要）
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    setupVibratoListener();
+                } else {
+                    console.log('Motion permission denied, vibrato disabled');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to request motion permission:', error);
+            });
+    } else {
+        // iOS 13未満 or Android
+        setupVibratoListener();
+    }
+}
+
+function setupVibratoListener() {
+    window.addEventListener('devicemotion', handleDeviceMotion, true);
+    isVibratoEnabled = true;
+    console.log('Vibrato control enabled: Shake iPhone for vibrato effect');
+}
+
+function handleDeviceMotion(event) {
+    if (!isVibratoEnabled || !vibratoLFO || !event.accelerationIncludingGravity) return;
+    
+    const accel = event.accelerationIncludingGravity;
+    const currentAccel = {
+        x: accel.x || 0,
+        y: accel.y || 0,
+        z: accel.z || 0
+    };
+    
+    // 加速度の変化量を計算（振りの強さ）
+    const deltaX = Math.abs(currentAccel.x - lastAcceleration.x);
+    const deltaY = Math.abs(currentAccel.y - lastAcceleration.y);
+    const deltaZ = Math.abs(currentAccel.z - lastAcceleration.z);
+    const totalDelta = deltaX + deltaY + deltaZ;
+    
+    // 履歴に追加
+    accelerationHistory.push(totalDelta);
+    if (accelerationHistory.length > VIBRATO_HISTORY_SIZE) {
+        accelerationHistory.shift();
+    }
+    
+    // 平均値でスムージング
+    const avgDelta = accelerationHistory.reduce((a, b) => a + b, 0) / accelerationHistory.length;
+    
+    // ビブラート目標強度を計算（0-1）- より派手に調整
+    const rawIntensity = Math.min(avgDelta / 10, 1); // 10以上で最大（より敏感に）
+    targetVibratoIntensity = rawIntensity * 1.0; // 最大100%に拡大（より派手に）
+    
+    // 現在の強度を目標値に向けてスムーズに変化（3秒減衰）
+    if (targetVibratoIntensity > vibratoIntensity) {
+        // 振りが強くなった場合は即座に追従
+        vibratoIntensity = targetVibratoIntensity;
+    } else {
+        // 振りが弱くなった場合はゆっくり減衰
+        vibratoIntensity = vibratoIntensity * VIBRATO_DECAY_RATE + targetVibratoIntensity * (1 - VIBRATO_DECAY_RATE);
+    }
+    
+    // ビブラートLFOの振幅を更新
+    if (vibratoLFO) {
+        const vibratoAmount = vibratoIntensity * 60; // 最大60セント（±30セント、超派手に！）
+        vibratoLFO.amplitude.value = vibratoAmount;
+    }
+    
+    lastAcceleration = currentAccel;
+}
+
+function getVibratoInfo() {
+    return {
+        enabled: isVibratoEnabled,
+        intensity: vibratoIntensity,
+        targetIntensity: targetVibratoIntensity,
+        frequency: vibratoLFO ? vibratoLFO.frequency.value : 0
+    };
+}
+
 // Export for sketch.js
 if (typeof window !== 'undefined') {
     window.updateDronePan = updateDronePan;
     window.playStartSound = playStartSound;
+    window.initVibratoControl = initVibratoControl;
+    window.getVibratoInfo = getVibratoInfo;
 } 

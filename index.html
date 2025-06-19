@@ -155,6 +155,11 @@
         
         // Audio system will be initialized when user clicks START button
         console.log('Audio system will initialize after user interaction');
+        
+        // Make vibrato functions globally available
+        window.initVibratoControl = initVibratoControl;
+        window.getVibratoInfo = getVibratoInfo;
+        console.log('Vibrato functions made globally available');
       });
       
       // Touch to Start functionality

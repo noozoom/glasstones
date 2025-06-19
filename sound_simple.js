@@ -36,6 +36,17 @@ let targetLUFS = -14; // Target loudness
 let currentLUFS = -70; // Current measured LUFS
 let autoGainAdjustment = 1.0; // Automatic gain adjustment factor
 
+// VIBRATO SYSTEM - iPhone振ってビブラート
+let vibratoLFO = null;
+let vibratoGain = null;
+let vibratoIntensity = 0; // 0-1, 振りの強さに応じて変化
+let targetVibratoIntensity = 0; // 目標値（振りの強さ）
+let lastAcceleration = { x: 0, y: 0, z: 0 };
+let accelerationHistory = [];
+const VIBRATO_HISTORY_SIZE = 10; // 10フレーム分の履歴
+const VIBRATO_DECAY_RATE = 0.985; // 減衰率（3秒でゆっくり減衰）
+let isVibratoEnabled = false;
+
 // Polyphonic voice management (32 voices like original)
 // Mobile optimized polyphonic limit
 // タッチデバイス判定関数（sketch.jsで定義される前に使用するため関数化）
@@ -203,6 +214,17 @@ function createEffectBus(audioContext) {
     chorusLFOGain.connect(chorusBus.delayTime);
     chorusLFO.start();
     
+    // VIBRATO SYSTEM SETUP
+    vibratoLFO = audioContext.createOscillator();
+    vibratoGain = audioContext.createGain();
+    
+    vibratoLFO.frequency.value = 2.0; // 2.0Hz ビブラート（1秒間に2回）
+    vibratoGain.gain.value = 0; // 初期は無効
+    
+    // ビブラートLFO接続: LFO -> gain -> effectBus frequency (周波数変調)
+    vibratoLFO.connect(vibratoGain);
+    vibratoLFO.start();
+    
     // SHARED REVERB SYSTEM
     reverbBus = audioContext.createConvolver();
     reverbGainBus = audioContext.createGain();
@@ -243,7 +265,97 @@ function createEffectBus(audioContext) {
     reverbGainBus.connect(effectBusPanner);
     effectBusPanner.connect(masterGain);
     
-    console.log(`Effect bus created: ${reverbLength}s reverb (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'}) with panning`);
+    console.log(`Effect bus created: ${reverbLength}s reverb (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'}) with panning + vibrato`);
+}
+
+// VIBRATO CONTROL FUNCTIONS
+function initVibratoControl() {
+    if (!isTouchDevice()) {
+        console.log('Vibrato control: Desktop device, skipping motion sensor setup');
+        return;
+    }
+    
+    console.log('Initializing iPhone vibrato control...');
+    
+    // DeviceMotionAPIの許可をリクエスト（iOS 13+で必要）
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    setupVibratoListener();
+                } else {
+                    console.log('Motion permission denied, vibrato disabled');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to request motion permission:', error);
+            });
+    } else {
+        // iOS 13未満 or Android
+        setupVibratoListener();
+    }
+}
+
+function setupVibratoListener() {
+    window.addEventListener('devicemotion', handleDeviceMotion, true);
+    isVibratoEnabled = true;
+    console.log('Vibrato control enabled: Shake iPhone for vibrato effect');
+}
+
+function handleDeviceMotion(event) {
+    if (!isVibratoEnabled || !vibratoGain || !event.accelerationIncludingGravity) return;
+    
+    const accel = event.accelerationIncludingGravity;
+    const currentAccel = {
+        x: accel.x || 0,
+        y: accel.y || 0,
+        z: accel.z || 0
+    };
+    
+    // 加速度の変化量を計算（振りの強さ）
+    const deltaX = Math.abs(currentAccel.x - lastAcceleration.x);
+    const deltaY = Math.abs(currentAccel.y - lastAcceleration.y);
+    const deltaZ = Math.abs(currentAccel.z - lastAcceleration.z);
+    const totalDelta = deltaX + deltaY + deltaZ;
+    
+    // 履歴に追加
+    accelerationHistory.push(totalDelta);
+    if (accelerationHistory.length > VIBRATO_HISTORY_SIZE) {
+        accelerationHistory.shift();
+    }
+    
+    // 平均値でスムージング
+    const avgDelta = accelerationHistory.reduce((a, b) => a + b, 0) / accelerationHistory.length;
+    
+    // ビブラート目標強度を計算（0-1）- より派手に調整
+    const rawIntensity = Math.min(avgDelta / 10, 1); // 10以上で最大（より敏感に）
+    targetVibratoIntensity = rawIntensity * 1.0; // 最大100%に拡大（より派手に）
+    
+    // 現在の強度を目標値に向けてスムーズに変化（3秒減衰）
+    if (targetVibratoIntensity > vibratoIntensity) {
+        // 振りが強くなった場合は即座に追従
+        vibratoIntensity = targetVibratoIntensity;
+    } else {
+        // 振りが弱くなった場合はゆっくり減衰
+        vibratoIntensity = vibratoIntensity * VIBRATO_DECAY_RATE + targetVibratoIntensity * (1 - VIBRATO_DECAY_RATE);
+    }
+    
+    // ビブラートゲインを更新
+    if (window.simpleAudioContext) {
+        const vibratoAmount = vibratoIntensity * 60; // 最大60セント（±30セント、超派手に！）
+        vibratoGain.gain.setValueAtTime(vibratoAmount, window.simpleAudioContext.currentTime);
+    }
+    
+    lastAcceleration = currentAccel;
+}
+
+function getVibratoInfo() {
+    return {
+        enabled: isVibratoEnabled,
+        intensity: vibratoIntensity,
+        targetIntensity: targetVibratoIntensity,
+        frequency: vibratoLFO ? vibratoLFO.frequency.value : 0
+    };
 }
 
 // UPDATE EFFECT BUS BASED ON BALL POSITION
@@ -511,6 +623,11 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
         
         osc.frequency.value = randomizedFrequency;
         osc.type = 'sine';
+        
+        // VIBRATO CONNECTION - iPhone振りビブラート
+        if (vibratoGain && isVibratoEnabled) {
+            vibratoGain.connect(osc.frequency);
+        }
         
         // 音量制御の計算
         // 1. 連打による音量減衰 (1, 0.5, 0.25, 0.125...)

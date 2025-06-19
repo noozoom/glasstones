@@ -230,6 +230,12 @@ function setup() {
     
     // 取得した pixelDensity でスケールを決定
     PD_SCALE = 1 / pixelDensity();
+    
+    // Initialize vibrato control for iPhone shake
+    if (typeof window.initVibratoControl === 'function') {
+        window.initVibratoControl();
+        console.log('Vibrato control initialized');
+    }
 }
 
 function draw() {
