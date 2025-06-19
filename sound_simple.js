@@ -17,6 +17,7 @@ let analyser = null;
 
 // EFFECT BUS SYSTEM - 共有エフェクト（音ごとに作らない）
 let effectBus = null;           // エフェクトバス
+let effectBusPanner = null;     // エフェクトバス用パンナー
 let delayBus = null;            // 共有ディレイ
 let delayGainBus = null;        // ディレイミックス
 let delayFeedbackBus = null;    // ディレイフィードバック
@@ -151,6 +152,10 @@ function createEffectBus(audioContext) {
     effectBus = audioContext.createGain();
     effectBus.gain.value = 1.0;
     
+    // Effect bus panner for left-right positioning
+    effectBusPanner = audioContext.createStereoPanner();
+    effectBusPanner.pan.value = 0; // Center by default
+    
     // Dry signal bus
     dryBus = audioContext.createGain();
     dryBus.gain.value = 0.5; // 50% dry signal
@@ -228,20 +233,27 @@ function createEffectBus(audioContext) {
     delayGainBus.connect(preFXGain);
     chorusGainBus.connect(preFXGain);
     
-    // Send to reverb
+    // Send to reverb, then to effect bus panner, then to master
     preFXGain.connect(reverbBus);
     reverbBus.connect(reverbGainBus);
-    reverbGainBus.connect(masterGain);
+    reverbGainBus.connect(effectBusPanner);
+    effectBusPanner.connect(masterGain);
     
-    console.log(`Effect bus created: ${reverbLength}s reverb (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'})`);
+    console.log(`Effect bus created: ${reverbLength}s reverb (${IS_MOBILE_REVERB ? 'Mobile' : 'Desktop'}) with panning`);
 }
 
 // UPDATE EFFECT BUS BASED ON BALL POSITION
-function updateEffectBus(ballY) {
+function updateEffectBus(ballX, ballY) {
     if (!delayBus || !chorusLFO || ballY === undefined || !window.innerHeight) return;
     
     const verticalRatio = ballY / window.innerHeight; // 0 (top) to 1 (bottom)
     const IS_MOBILE_EFFECT = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+    
+    // Update effect bus panning based on horizontal position
+    if (effectBusPanner && ballX !== undefined && window.innerWidth) {
+        const panValue = (ballX / window.innerWidth) * 2 - 1; // -1 to 1
+        effectBusPanner.pan.setValueAtTime(panValue, window.simpleAudioContext.currentTime);
+    }
     
     // Update delay based on vertical position
     if (IS_MOBILE_EFFECT) {
@@ -387,7 +399,7 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
         const audioContext = window.simpleAudioContext;
         
         // Update effect bus based on ball position
-        updateEffectBus(ballY);
+        updateEffectBus(ballX, ballY);
         
         // Calculate frequency from line length (短い線ほど高音、長い線ほど低音)
         const maxLength = Math.hypot(window.innerWidth, window.innerHeight) * 0.25;
@@ -482,7 +494,7 @@ function playSimpleSound(lineLength, ballX, ballY, consecutiveHits = 1, volumeMu
             panner.pan.value = panValue;
         }
         
-        // SIMPLE ROUTING: osc -> gain -> panner -> effectBus（共有エフェクト）
+        // ROUTING: osc -> gain -> panner -> effectBus（個別パンニング + 共有エフェクト）
         osc.connect(gain);
         gain.connect(panner);
         panner.connect(effectBus); // 共有エフェクトバスに送信
