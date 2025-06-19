@@ -90,6 +90,10 @@ function initializeAudio() {
 
 // Setup the A2 drone bass
 function setupDrone() {
+    // Detect mobile devices for extra audio safety
+    const isMobile = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
+    const fadeTime = isMobile ? 4 : 3; // Longer fade on mobile
+    
     // ---------- A2 Drone ----------
     dronePanner = new Tone.Panner(0).toDestination();
     const droneGain = new Tone.Gain(0).connect(dronePanner);
@@ -98,10 +102,24 @@ function setupDrone() {
         type: "sine",
         volume: -20 // Base volume
     }).connect(droneGain);
-    drone.start();
-    // Start completely silent, then fade in over 2 seconds to prevent "pop" sound
-    droneGain.gain.setValueAtTime(0, Tone.now());
-    droneGain.gain.rampTo(0.422, 2); // Smooth 2-second fade-in
+    
+    // Mobile-safe drone start
+    if (isMobile) {
+        // Extra delay before starting on mobile
+        setTimeout(() => {
+            drone.start();
+            // Start completely silent, then fade in over 4 seconds on mobile
+            droneGain.gain.setValueAtTime(0, Tone.now());
+            droneGain.gain.exponentialRampTo(0.0001, 0.2); // Very quiet first, longer ramp
+            droneGain.gain.exponentialRampTo(0.422, fadeTime);
+        }, 200); // 200ms delay on mobile
+    } else {
+        drone.start();
+        // Start completely silent, then fade in over 3 seconds on desktop
+        droneGain.gain.setValueAtTime(0, Tone.now());
+        droneGain.gain.exponentialRampTo(0.001, 0.1);
+        droneGain.gain.exponentialRampTo(0.422, fadeTime);
+    }
     drone.gainNode = droneGain;
 
     // ---------- D3 Drone ---------- (frequency 146.83Hz)
@@ -112,10 +130,24 @@ function setupDrone() {
         type: "sine",
         volume: -20
     }).connect(droneD3Gain);
-    droneD3.start();
-    // Start completely silent, then fade in over 2 seconds to prevent "pop" sound
-    droneD3Gain.gain.setValueAtTime(0, Tone.now());
-    droneD3Gain.gain.rampTo(0.422, 2); // Smooth 2-second fade-in
+    
+    // Mobile-safe D3 drone start
+    if (isMobile) {
+        // Extra delay before starting on mobile
+        setTimeout(() => {
+            droneD3.start();
+            // Start completely silent, then fade in over 4 seconds on mobile
+            droneD3Gain.gain.setValueAtTime(0, Tone.now());
+            droneD3Gain.gain.exponentialRampTo(0.0001, 0.2); // Very quiet first, longer ramp
+            droneD3Gain.gain.exponentialRampTo(0.422, fadeTime);
+        }, 250); // Slightly staggered from first drone
+    } else {
+        droneD3.start();
+        // Start completely silent, then fade in over 3 seconds on desktop
+        droneD3Gain.gain.setValueAtTime(0, Tone.now());
+        droneD3Gain.gain.exponentialRampTo(0.001, 0.1);
+        droneD3Gain.gain.exponentialRampTo(0.422, fadeTime);
+    }
     droneD3.gainNode = droneD3Gain;
 }
 
