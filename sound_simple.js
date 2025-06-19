@@ -273,16 +273,16 @@ function playSimpleSound(lineLength, ballX, consecutiveHits = 1, volumeMultiplie
         const frequency = simpleScale[index]; // 長い線ほど低音、短い線ほど高音
         const noteName = simpleNotes[index];
         
-        // 3秒以内の同音発生チェック（違う線・同じ線問わず）
+        // 6秒以内の同音発生チェック（違う線・同じ線問わず）
         const currentTime = Date.now();
-        const SAME_NOTE_INTERVAL = 3000; // 3秒
+        const SAME_NOTE_INTERVAL = 6000; // 6秒
         const freqKey = frequency.toString();
         let finalFrequency = frequency;
         let finalIndex = index;
         
-        // 3秒以内に同じ音が鳴っていた場合、隣接音階を選択
+        // 6秒以内に同じ音が鳴っていた場合、隣接音階を選択
         if (lastPlayTime[freqKey] && (currentTime - lastPlayTime[freqKey]) < SAME_NOTE_INTERVAL) {
-            console.log(`Same frequency ${frequency}Hz within 3 seconds (${currentTime - lastPlayTime[freqKey]}ms ago), selecting adjacent note`);
+            console.log(`Same frequency ${frequency}Hz within 6 seconds (${currentTime - lastPlayTime[freqKey]}ms ago), selecting adjacent note`);
             
             // 隣接音階を選択（上か下かランダム）
             const goUp = Math.random() < 0.5;
