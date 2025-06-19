@@ -188,9 +188,9 @@ function setupSynthPool() {
 function getFrequencyFromLineLength(lineLength) {
     // 画面対角線の1/4を基準長とし、短い線ほど高音になるよう指数カーブでマッピング
     const maxLength = Math.hypot(width, height) * 0.25; // 約画面1/4 (半分に短縮)
-    // モバイルでは音階変化を緩やかに（5mm単位相当）
+    // モバイルでは音階変化を緩やかに（より長い線で低音が出るよう調整）
     const IS_MOBILE_AUDIO = /iP(hone|ad|od)|Android/.test(navigator.userAgent);
-    const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 0.8 : maxLength * 0.67; // Mobile: 短い線で高音が出るよう
+    const effectiveMax = IS_MOBILE_AUDIO ? maxLength * 0.4 : maxLength * 0.67; // Mobile: 倍の長さで低音が出るよう
     const normalized = Math.min(lineLength / effectiveMax, 1);   // 0〜1 (長いほど1)
     const inverted = 1 - normalized;                          // 短いほど1
     const curved = Math.pow(inverted, 0.6);                   // カーブをかけて短線強調
